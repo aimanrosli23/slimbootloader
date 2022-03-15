@@ -1,18 +1,8 @@
-/**@file
-  This is part of the implementation of an Intel Graphics drivers OpRegion /
-  Software SCI interface between system Bootloader, ASL code, and Graphics drivers.
-  The code in this file will load the driver and initialize the interface
-  Supporting Specification: OpRegion / Software SCI SPEC 0.70
+/** @file
 
-  Acronyms:
-    IGD:        Internal Graphics Device
-    NVS:        ACPI Non Volatile Storage
-    OpRegion:   ACPI Operational Region
-    VBT:        Video BIOS Table (OEM customizable data)
-    IPU:        Image Processing Unit
-
-  Copyright (c) 2021, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2020 - 2022, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
+
 **/
 
 #include <PiPei.h>
@@ -117,6 +107,29 @@ AdlPDdr5GopVbtSpecificUpdate (
 }
 
 /**
+  GOP VBT update for ADL P Ddr5 Edp + DP
+
+  @param[in]  ChildStructPtr  - CHILD_STRUCT
+
+**/
+VOID
+EFIAPI
+AdlNLpddr5GopVbtSpecificUpdate (
+  IN CHILD_STRUCT **ChildStructPtr
+)
+{
+  DEBUG ((DEBUG_INFO,"Update VBT for ADL-N LPDDR5\n"));
+  // Disabling DDI-B (LFP1)
+  ChildStructPtr[1]->DeviceClass          = NO_DEVICE;
+  // Enabling HDMI on DDI-B
+  ChildStructPtr[2]->DeviceClass          = HDMI_DVI;
+  ChildStructPtr[2]->DVOPort              = HDMI_B;
+  ChildStructPtr[2]->AUX_Channel          = 0x0;
+  ChildStructPtr[2]->HdmiLevelShifterConfig.Bits.HdmiMaxDataRateBits  = 0x0;
+  ChildStructPtr[2]->DDCBus               = 0x2;
+}
+
+/**
   GOP VBT update for ADL S DDR4
 
   @param[in]  ChildStructPtr  - CHILD_STRUCT
@@ -191,14 +204,14 @@ UpdateVbtChecksum(
 /**
   Update VBT data in Igd Op Region.
 
-  @param[in] IsExtendedVbt - Is an extended VBT being used
+  @param[in] VbtTablePtr      Pointer to VBT_TABLE_DATA
 
   @retval    EFI_SUCCESS      VBT data was returned.
   @exception EFI_ABORTED      Intel VBT not found.
 **/
 EFI_STATUS
 UpdateVbt (
-  BOOLEAN IsExtendedVbt
+  IN VOID   *VbtTablePtr
   )
 {
   VBT_TABLE_DATA                    *VbtPtr;
@@ -208,66 +221,63 @@ UpdateVbt (
   UINT16                            BoardId;
 
   GopVbtSpecificUpdate = NULL;
-
-  if (mIgdOpRegion.OpRegion == NULL) {
-    return EFI_NOT_FOUND;
-  }
-
-  if (IsExtendedVbt) {
-    VbtPtr = (VBT_TABLE_DATA*) (((UINTN)mIgdOpRegion.OpRegion) + sizeof (IGD_OPREGION_STRUCTURE));
-  } else {
-    VbtPtr = (VBT_TABLE_DATA*) &(mIgdOpRegion.OpRegion->MBox4);
-  }
-
-  if (VbtPtr != NULL) {
-    DEBUG ((DEBUG_INFO, "VBT data found '%.20a'\n", VbtPtr->VbtHeader.Product_String));
-
-    BoardId = GetPlatformId ();
-
-    DEBUG((DEBUG_INFO, "Updating GOP VBT fields using GOP Configuration Lib.\n"));
-
-    ChildStructPtr[0] = &(VbtPtr->VbtGen2Info.Child_Struct[0]);
-    for (Index = 0; Index < (ChildStruct_MAX - 1); Index++) {
-      ChildStructPtr[Index + 1] = (CHILD_STRUCT *)(((UINT8 *)ChildStructPtr[Index]) + VbtPtr->VbtGen2Info.SizeChild_Struct);
-    }
-
-    switch (BoardId) {
-    case PLATFORM_ID_ADL_S_ADP_S_CRB:
-    case PLATFORM_ID_ADL_S_ADP_S_DDR5_UDIMM_1DC_CRB:
-    case PLATFORM_ID_TEST_S_DDR5_UDIMM_RVP:
-    case PLATFORM_ID_ADL_S_ADP_S_DDR4_SODIMM_CRB:
-    case PLATFORM_ID_ADL_S_ADP_S_DDR5_SODIMM_CRB:
-      DEBUG((DEBUG_INFO, "UpdateVbt: PLATFORM_ID_ADL_S_ADP_S_CRB .....\n"));
-      GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlGopVbtSpecificUpdateNull;
-      break;
-    case PLATFORM_ID_ADL_P_DDR5_RVP:
-    case PLATFORM_ID_ADL_P_TEST_DDR5_RVP:
-    case PLATFORM_ID_ADL_P_TEST_DDR5_CRB:
-      DEBUG((DEBUG_INFO, "UpdateVbt: PLATFORM_ID_ADL_P_DDR5_RVP .....\n"));
-      GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlPDdr5GopVbtSpecificUpdate;
-      break;
-    case PLATFORM_ID_ADL_P_LP4_RVP:
-    case PLATFORM_ID_ADL_P_LP5_RVP:
-      DEBUG((DEBUG_INFO, "UpdateVbt: BoardIdAdlPLp4/5Rvp .....\n"));
-      GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlGopVbtSpecificUpdateNull;
-      break;
-    default:
-      DEBUG((DEBUG_INFO, "UpdateVbt: Unsupported board Id %x .....\n", BoardId));
-      break;
-    }
-    ASSERT(GopVbtSpecificUpdate != NULL);
-    if (GopVbtSpecificUpdate) {
-      GopVbtSpecificUpdate (ChildStructPtr);
-    }
-
-    DEBUG((DEBUG_INFO, "VBT Updated.\n"));
-    UpdateVbtChecksum (VbtPtr);
-
-    return EFI_SUCCESS;
-  } else {
-    DEBUG ((DEBUG_INFO, "Intel VBT not found\n"));
+  VbtPtr = (VBT_TABLE_DATA *)VbtTablePtr;
+  if (VbtPtr == NULL) {
     return EFI_ABORTED;
   }
+
+  DEBUG ((DEBUG_INFO, "VBT data found '%.20a'\n", VbtPtr->VbtHeader.Product_String));
+
+  BoardId = GetPlatformId ();
+
+  DEBUG((DEBUG_INFO, "Updating GOP VBT fields using GOP Configuration Lib.\n"));
+
+  ChildStructPtr[0] = &(VbtPtr->VbtGen2Info.Child_Struct[0]);
+  for (Index = 0; Index < (ChildStruct_MAX - 1); Index++) {
+    ChildStructPtr[Index + 1] = (CHILD_STRUCT *)(((UINT8 *)ChildStructPtr[Index]) + VbtPtr->VbtGen2Info.SizeChild_Struct);
+  }
+
+  switch (BoardId) {
+  case PLATFORM_ID_ADL_S_ADP_S_CRB:
+  case PLATFORM_ID_ADL_S_ADP_S_DDR5_UDIMM_1DC_CRB:
+  case PLATFORM_ID_TEST_S_DDR5_UDIMM_RVP:
+  case PLATFORM_ID_ADL_S_ADP_S_DDR4_SODIMM_CRB:
+  case PLATFORM_ID_ADL_S_ADP_S_DDR5_SODIMM_CRB:
+    DEBUG((DEBUG_INFO, "UpdateVbt: PLATFORM_ID_ADL_S_ADP_S_CRB .....\n"));
+    GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlGopVbtSpecificUpdateNull;
+    break;
+  case PLATFORM_ID_ADL_P_DDR5_RVP:
+  case PLATFORM_ID_ADL_PS_DDR5_RVP:
+  case PLATFORM_ID_ADL_PS_DDR5_CRB:
+    DEBUG((DEBUG_INFO, "UpdateVbt: PLATFORM_ID_ADL_P_DDR5_RVP .....\n"));
+    GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlPDdr5GopVbtSpecificUpdate;
+    break;
+  case PLATFORM_ID_ADL_P_LP4_RVP:
+  case PLATFORM_ID_ADL_P_LP5_RVP:
+    DEBUG((DEBUG_INFO, "UpdateVbt: BoardIdAdlPLp4/5Rvp .....\n"));
+    GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlGopVbtSpecificUpdateNull;
+    break;
+  case PLATFORM_ID_ADL_N_DDR5_CRB:
+    DEBUG((DEBUG_INFO, "UpdateVbt: BoardIdAdlNDdr5 .....\n"));
+    GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlGopVbtSpecificUpdateNull;
+    break;
+  case PLATFORM_ID_ADL_N_LPDDR5_RVP:
+    DEBUG((DEBUG_INFO, "UpdateVbt: BoardIdAdlNLpddr5 .....\n"));
+    GopVbtSpecificUpdate = (GOP_VBT_SPECIFIC_UPDATE)(UINTN)&AdlNLpddr5GopVbtSpecificUpdate;
+    break;
+  default:
+    DEBUG((DEBUG_INFO, "UpdateVbt: Unsupported board Id %x .....\n", BoardId));
+    break;
+  }
+  ASSERT(GopVbtSpecificUpdate != NULL);
+  if (GopVbtSpecificUpdate) {
+    GopVbtSpecificUpdate (ChildStructPtr);
+  }
+
+  DEBUG((DEBUG_INFO, "VBT Updated.\n"));
+  UpdateVbtChecksum (VbtPtr);
+
+  return EFI_SUCCESS;
 
 }
 
@@ -399,12 +409,6 @@ IgdOpRegionInit (
     mIgdOpRegion.OpRegion->MBox3.RVDA = 0;
     mIgdOpRegion.OpRegion->MBox3.RVDS = 0;
     CopyMem (mIgdOpRegion.OpRegion->MBox4.RVBT, VbtFileBuffer, VbtFileBuffer->HeaderVbtSize);
-  }
-
-  Status = UpdateVbt (ExtendedVbtSize > 0);
-
-  if (EFI_ERROR (Status)) {
-    return Status;
   }
 
   // Initialize hardware state:
