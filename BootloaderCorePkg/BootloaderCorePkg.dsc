@@ -408,12 +408,14 @@
       AbSupportLib        | PayloadPkg/Library/AbSupportLib/AbSupportLib.inf
       SblParameterLib     | PayloadPkg/Library/SblParameterLib/SblParameterLib.inf
       TrustyBootLib       | PayloadPkg/Library/TrustyBootLib/TrustyBootLib.inf
+      MpServiceLib        | PayloadPkg/Library/MpServiceLib/MpServiceLib.inf
   }
 
 !if $(ENABLE_FWU)
   PayloadPkg/FirmwareUpdate/FirmwareUpdate.inf {
     <PcdsFixedAtBuild>
       gPlatformCommonLibTokenSpaceGuid.PcdDebugOutputDeviceMask  | $(DEBUG_OUTPUT_DEVICE_MASK)
+      gPlatformCommonLibTokenSpaceGuid.PcdConsoleOutDeviceMask   | ($(CONSOLE_OUT_DEVICE_MASK) + 0x02)
     <LibraryClasses>
       MemoryAllocationLib     | BootloaderCommonPkg/Library/FullMemoryAllocationLib/FullMemoryAllocationLib.inf
       PayloadEntryLib         | PayloadPkg/Library/PayloadEntryLib/PayloadEntryLib.inf

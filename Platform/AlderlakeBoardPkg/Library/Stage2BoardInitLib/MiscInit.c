@@ -27,7 +27,6 @@ UpdatePayloadId (
   PLDSEL_CFG_DATA   *PldSelCfgData;
   UINT32            PayloadSelGpioData;
   UINT32            PayloadSelGpioPad;
-  UINT8             CmosData;
 
   PayloadSelGpioData = 0;
 
@@ -46,38 +45,6 @@ UpdatePayloadId (
       SetPayloadId (PayloadId);
       return;
     }
-  }
-
-  //
-  // Use CMOS offset 0x20 (use as magic check) and 0x21 (payloadId) for payload detection.
-  //
-  // Read CMOS offset 20 value
-  IoWrite8 (CMOS_EXTENDED_ADDREG, CMOS_EXTENDED_OFFSET_20);
-  CmosData = IoRead8 (CMOS_EXTENDED_DATAREG);
-  DEBUG ((DEBUG_INFO, "CMOS boot Magic [0x%x]\n", CmosData));
-
-  if (CmosData == CMOS_VALUE_SWITCH_PLD) {
-    // Read payload target
-    IoWrite8 (CMOS_EXTENDED_ADDREG, CMOS_EXTENDED_OFFSET_21);
-    CmosData  = IoRead8 (CMOS_EXTENDED_DATAREG);
-    DEBUG ((DEBUG_INFO, "CMOS boot target [0x%x]\n", CmosData));
-
-    switch (CmosData) {
-      case 0:
-        SetPayloadId (0);
-        break;
-      case 1:
-        SetPayloadId (UEFI_PAYLOAD_ID_SIGNATURE);
-        break;
-      case 2:
-        SetPayloadId (LINX_PAYLOAD_ID_SIGNATURE);
-        break;
-      default:
-       SetPayloadId (0);
-       break;
-    }
-
-    return;
   }
 
   //

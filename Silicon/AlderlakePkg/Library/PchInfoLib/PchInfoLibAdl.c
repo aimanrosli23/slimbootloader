@@ -446,7 +446,7 @@ PchSeriesFromLpcDid (
       return PCH_S;
 
     case V_LPC_CFG_DID_ADL_P:
-    case V_LPC_CFG_DID_ADL_PTEST:
+    case V_LPC_CFG_DID_ADL_PS:
       return PCH_P;
 
     case V_LPC_CFG_DID_ADL_N:
@@ -557,7 +557,7 @@ IsPchLp (
   VOID
   )
 {
-  return (PchSeries () == PCH_LP || PchSeries () == PCH_P || PchSeries () == PCH_M);
+  return (PchSeries () == PCH_LP || PchSeries () == PCH_P || PchSeries () == PCH_M || PchSeries () == PCH_N);
 }
 
 /**

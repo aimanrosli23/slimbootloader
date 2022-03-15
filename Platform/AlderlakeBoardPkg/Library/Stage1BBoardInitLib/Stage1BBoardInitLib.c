@@ -1,6 +1,6 @@
 /** @file
 
-  Copyright (c) 2020 - 2021, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2020 - 2022, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -603,8 +603,14 @@ DEBUG_CODE_END();
     case PLATFORM_ID_TEST_S_DDR5_UDIMM_RVP:
       ConfigureGpio (CDATA_NO_TAG, sizeof (mGpioTableEarlyPreMemTestSDdr5UDimm1DRvp) / sizeof (mGpioTableEarlyPreMemTestSDdr5UDimm1DRvp[0]), (UINT8*)mGpioTableEarlyPreMemTestSDdr5UDimm1DRvp);
       break;
-    case PLATFORM_ID_ADL_P_TEST_DDR5_RVP:
-      ConfigureGpio (CDATA_NO_TAG, sizeof (mGpioTablePreMemAdlPtestDdr5Rvp) / sizeof (mGpioTablePreMemAdlPtestDdr5Rvp[0]), (UINT8*)mGpioTablePreMemAdlPtestDdr5Rvp);
+    case PLATFORM_ID_ADL_PS_DDR5_RVP:
+      ConfigureGpio (CDATA_NO_TAG, sizeof (mGpioTablePreMemAdlPsDdr5Rvp) / sizeof (mGpioTablePreMemAdlPsDdr5Rvp[0]), (UINT8*)mGpioTablePreMemAdlPsDdr5Rvp);
+      break;
+    case PLATFORM_ID_ADL_N_DDR5_CRB:
+      ConfigureGpio (CDATA_NO_TAG, sizeof (mGpioTablePreMemAdlNDdr5Crb) / sizeof (mGpioTablePreMemAdlNDdr5Crb[0]), (UINT8*)mGpioTablePreMemAdlNDdr5Crb);
+      break;
+    case PLATFORM_ID_ADL_N_LPDDR5_RVP:
+      ConfigureGpio (CDATA_NO_TAG, sizeof (mGpioTablePreMemAdlNLpddr5Rvp) / sizeof (mGpioTablePreMemAdlNLpddr5Rvp[0]), (UINT8*)mGpioTablePreMemAdlNLpddr5Rvp);
       break;
     default:
       DEBUG ((DEBUG_ERROR, "Could not find pre-mem GPIO for PlatformId 0x%X!\n", GetPlatformId ()));
