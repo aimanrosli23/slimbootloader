@@ -169,22 +169,16 @@ XhcPeiWaitOpRegBit (
   IN UINT32             Timeout
   )
 {
-  EFI_STATUS            Status;
-  UINT64                EndTimeStamp;
+  UINT64 Index;
 
-  EndTimeStamp = ReadTimeStamp() + \
-                 MicroSecondToTimeStampTick (Timeout * XHC_1_MILLISECOND);
-
-  Status = EFI_TIMEOUT;
-  while (ReadTimeStamp() < EndTimeStamp) {
+  for (Index = 0; Index < Timeout * XHC_1_MILLISECOND; Index++) {
     if (XHC_REG_BIT_IS_SET (Xhc, Offset, Bit) == WaitToSet) {
-      Status = EFI_SUCCESS;
-      break;
+      return EFI_SUCCESS;
     }
     MicroSecondDelay (XHC_1_MICROSECOND);
   }
 
-  return Status;
+  return EFI_TIMEOUT;
 }
 
 /**

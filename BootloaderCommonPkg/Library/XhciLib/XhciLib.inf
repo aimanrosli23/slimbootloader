@@ -43,4 +43,4 @@
   BaseMemoryLib
   MemoryAllocationLib
   IoMmuLib
-  TimeStampLib
+
