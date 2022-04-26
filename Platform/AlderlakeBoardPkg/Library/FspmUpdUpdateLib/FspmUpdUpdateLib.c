@@ -101,9 +101,7 @@ TccModePreMemConfig (
   //FspmUpd->FspmConfig.WrcFeatureEnable         = 1;
   FspmUpd->FspmConfig.GtClosEnable               = 1;    // ***This causes hang in FSP and may end up frying up the board if this line is enabled in non-IOTG SKU ***
   FspmUpd->FspmConfig.PowerDownMode              = 0;    // controls command bus tristating during idle periods
-  if (GetCpuStepping () >= EnumAdlB0) {
-      FspmUpd->FspmConfig.HyperThreading         = 0;
-  }
+  FspmUpd->FspmConfig.HyperThreading         = 0;
   FspmUpd->FspmConfig.DisableStarv2medPrioOnNewReq = 1;
 
   FspmUpd->FspmConfig.SoftwareSramEnPreMem   = TccCfgData->TccSoftSram;
@@ -460,14 +458,13 @@ UpdateFspConfig (
   }
   CopyMem (Fspmcfg->CpuDmiHwEqGen3CoeffListCm, MemCfgData->CpuDmiHwEqGen3CoeffListCm, sizeof(MemCfgData->CpuDmiHwEqGen3CoeffListCm));
   CopyMem (Fspmcfg->CpuDmiHwEqGen3CoeffListCp, MemCfgData->CpuDmiHwEqGen3CoeffListCp, sizeof(MemCfgData->CpuDmiHwEqGen3CoeffListCp));
+  CopyMem (Fspmcfg->CpuDmiHwEqGen4CoeffListCm, MemCfgData->CpuDmiHwEqGen4CoeffListCm, sizeof(MemCfgData->CpuDmiHwEqGen4CoeffListCm));
+  CopyMem (Fspmcfg->CpuDmiHwEqGen4CoeffListCp, MemCfgData->CpuDmiHwEqGen4CoeffListCp, sizeof(MemCfgData->CpuDmiHwEqGen4CoeffListCp));
+  CopyMem (Fspmcfg->PchDmiHwEqGen3CoeffListCm, MemCfgData->PchDmiHwEqGen3CoeffListCm, sizeof(MemCfgData->PchDmiHwEqGen3CoeffListCm));
+  CopyMem (Fspmcfg->PchDmiHwEqGen3CoeffListCp, MemCfgData->PchDmiHwEqGen3CoeffListCp, sizeof(MemCfgData->PchDmiHwEqGen3CoeffListCp));
   Fspmcfg->Gen3EqPhase23Bypass = MemCfgData->Gen3EqPhase23Bypass;
   Fspmcfg->Gen3EqPhase3Bypass  = MemCfgData->Gen3EqPhase3Bypass;
   Fspmcfg->Gen3LtcoEnable      = MemCfgData->Gen3LtcoEnable;
-
-  Fspmcfg->CpuDmiHwEqGen4CoeffListCm[1] = 0x7;
-  Fspmcfg->CpuDmiHwEqGen4CoeffListCm[2] = 0x6;
-  Fspmcfg->CpuDmiHwEqGen4CoeffListCp[1] = 0xE;
-  Fspmcfg->CpuDmiHwEqGen4CoeffListCp[2] = 0xA;
 
   // Tcss Dev enable bits
   Fspmcfg->TcssItbtPcie0En = MemCfgData->TcssItbtPcie0En;
@@ -520,8 +517,13 @@ UpdateFspConfig (
     CopyMem(SaDisplayConfigTable, (VOID *)(UINTN)mAdlPSEdpHdmiDisplayDdiConfig, sizeof(mAdlPSEdpHdmiDisplayDdiConfig));
     break;
   case PLATFORM_ID_TEST_S_DDR5_UDIMM_RVP:
+  case PLATFORM_ID_TEST_S_DDR5_SODIMM_RVP:
     // DP + DP
     CopyMem(SaDisplayConfigTable, (VOID *)(UINTN)mTestSDdr5RowDisplayDdiConfig3, sizeof(mTestSDdr5RowDisplayDdiConfig3));
+    break;
+  case PLATFORM_ID_ADL_N_DDR5_CRB:
+    // DP + DP
+    CopyMem(SaDisplayConfigTable, (VOID *)(UINTN)mAdlNddr5CrbRowDisplayDdiConfig, sizeof(mAdlNddr5CrbRowDisplayDdiConfig));
     break;
   case PLATFORM_ID_ADL_N_LPDDR5_RVP:
     // DP + DP
@@ -558,22 +560,12 @@ UpdateFspConfig (
     Fspmcfg->SiSkipOverrideBootModeWhenFwUpdate = TRUE;
 #endif
   }
-
+#ifndef PLATFORM_ADLN
+    Fspmcfg->WRDS = 0x1;
+#endif
   if (IsPchLp ()) {
     Fspmcfg->DdiPortAConfig = 0x1;
     Fspmcfg->WdtDisableAndLock = 0x1;
-    Fspmcfg->CpuDmiHwEqGen4CoeffListCm[1] = 0xe;
-    Fspmcfg->CpuDmiHwEqGen4CoeffListCm[2] = 0xa;
-    Fspmcfg->CpuDmiHwEqGen4CoeffListCp[1] = 0x7;
-    Fspmcfg->CpuDmiHwEqGen4CoeffListCp[2] = 0x6;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCm[0] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCm[1] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCm[2] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCm[3] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCp[0] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCp[1] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCp[2] = 0x0;
-    Fspmcfg->PchDmiHwEqGen3CoeffListCp[3] = 0x0;
     Fspmcfg->FirstDimmBitMask = 0x0;
     switch (GetPlatformId ()) {
       case PLATFORM_ID_ADL_P_LP4_RVP:
@@ -602,16 +594,11 @@ UpdateFspConfig (
         break;
       case PLATFORM_ID_ADL_N_DDR5_CRB:
         Fspmcfg->CpuPcieRpEnableMask = 0x0;
-        Fspmcfg->DdiPortAConfig = 0x1;
-        Fspmcfg->DdiPortBHpd = 0x1;
-        Fspmcfg->DdiPort1Hpd = 0x1;
-        Fspmcfg->DdiPort2Hpd = 0x1;
-        Fspmcfg->DdiPortBDdc = 0x1;
-        Fspmcfg->DdiPort1Ddc = 0x1;
-        Fspmcfg->DdiPort2Ddc = 0x1;
         Fspmcfg->DmiHweq = 0x2;
         Fspmcfg->Lp5CccConfig = 0xff;
         Fspmcfg->SkipCpuReplacementCheck = 0x0;
+        Fspmcfg->FirstDimmBitMaskEcc = 0x0;
+        Fspmcfg->Lp5BankMode = 0x0;
         break;
       case PLATFORM_ID_ADL_N_LPDDR5_RVP:
         Fspmcfg->DmiHweq = 0x2;
