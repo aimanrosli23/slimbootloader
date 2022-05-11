@@ -222,7 +222,7 @@ UpdateFspConfig (
 
   DebugPort = GetDebugPort ();
   if (DebugPort < GetPchMaxSerialIoUartControllersNum ()) {
-    Fspmcfg->PcdDebugInterfaceFlags = BIT4;
+    Fspmcfg->PcdDebugInterfaceFlags = BIT4 | BIT5;
     Fspmcfg->SerialIoUartDebugControllerNumber = DebugPort;
     Fspmcfg->SerialIoUartDebugMode = 4;
   } else {
@@ -434,6 +434,7 @@ UpdateFspConfig (
   Fspmcfg->HyperThreading             = MemCfgData->HyperThreading;
   Fspmcfg->GtClosEnable               = MemCfgData->GtClosEnable;
   Fspmcfg->VmxEnable                  = MemCfgData->VmxEnable;
+  Fspmcfg->Lp5BankMode                = MemCfgData->Lp5BankMode;
 
   // CSI port
   CopyMem (Fspmcfg->IpuLaneUsed, MemCfgData->IpuLaneUsed, sizeof(MemCfgData->IpuLaneUsed));
@@ -586,6 +587,8 @@ UpdateFspConfig (
         Fspmcfg->PcieClkReqGpioMux[9] = 0x796e9000;
         Fspmcfg->TcssXdciEn = 0x1;
         Fspmcfg->Ddr4OneDpc = 0x3;
+        Fspmcfg->DmiHweq = 0x2;
+        Fspmcfg->FirstDimmBitMaskEcc = 0x0;
         break;
       case PLATFORM_ID_ADL_PS_DDR5_RVP:
         Fspmcfg->DdiPortBHpd = 0x1;
