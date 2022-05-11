@@ -13,8 +13,8 @@ STATIC volatile ALL_CPU_TASK              mSysCpuTask;
 STATIC volatile MP_DATA_EXCHANGE_STRUCT   mMpDataStruct;
 STATIC UINT8                             *mBackupBuffer;
 STATIC UINT32                             mMpInitPhase = EnumMpInitNull;
-STATIC SMMBASE_INFO                      *mSmmBaseInfo;
-STATIC MTRR_SETTINGS                      mMtrrTable;
+STATIC SMMBASE_INFO                      *mSmmBaseInfo = NULL;
+
 extern UINT8                             *mDefaultSmiHandlerStart;
 extern UINT8                             *mDefaultSmiHandlerRet;
 extern UINT8                             *mDefaultSmiHandlerEnd;
@@ -22,31 +22,6 @@ extern UINT8                             *mDefaultSmiHandlerEnd;
 extern VOID                               RendezvousFunnelProcStart(VOID);
 extern VOID                               RendezvousFunnelProcEnd(VOID);
 
-/**
-  The CPU task function to program MTRRs.
-
-  @param[in] Arg  Task parameter.
-
-  @retval  0           MTRRs were set successfully.
-           MAX_UINT64  Failed to set MTRRs
-**/
-UINT64
-EFIAPI
-SetCpuMtrrsTask (
-  IN  UINT64   Arg
-  )
-{
-  EFI_STATUS       Status;
-  MTRR_SETTINGS   *MtrrSettings;
-
-  MtrrSettings = (MTRR_SETTINGS *)(UINTN)Arg;
-  Status = SetCpuMtrrs (MtrrSettings);
-  if (!EFI_ERROR(Status)) {
-    return 0;
-  } else {
-    return MAX_UINT64;
-  }
-}
 
 /**
   The function is called by PerformQuickSort to sort CPU_INFO by ApicId.
@@ -177,12 +152,10 @@ CpuInit (
   IN UINT32               Index
   )
 {
-  CPU_SMMBASE            *CpuSmmBase;
+  SMMBASE_INFO            *SmmBaseInfo;
   UINT32                  ApicId;
   UINT32                  CpuIdx;
-  UINT32                  CpuCount;
   PLATFORM_CPU_INIT_HOOK  PlatformCpuInitHook;
-  PLD_TO_BL_SMM_INFO      *PldToBlSmmInfo;
 
   if (FeaturePcdGet (PcdCpuX2ApicEnabled)) {
     // Enable X2APIC if desired
@@ -197,27 +170,12 @@ CpuInit (
     mSysCpuInfo.CpuInfo[Index].ApicId = ApicId;
   }
 
-  CpuCount = 0;
   if ((GetBootMode() == BOOT_ON_S3_RESUME) && (mSmmBaseInfo != NULL)) {
     // Perform SMM rebasing on S3 if payload provides SMM base info
-    if ((PcdGet8(PcdBuildSmmHobs) & BIT1) != 0) {
-      PldToBlSmmInfo = (PLD_TO_BL_SMM_INFO *) mSmmBaseInfo;
-      if (CompareGuid(&PldToBlSmmInfo->Header.Name, &gPldS3CommunicationGuid)) {
-        CpuSmmBase = PldToBlSmmInfo->S3Info.SmmBase;
-        CpuCount   = PldToBlSmmInfo->S3Info.CpuCount;
-      }
-    }
-
-    if ((PcdGet8(PcdBuildSmmHobs) & BIT0) != 0) {
-      if ((mSmmBaseInfo->SmmBaseHdr.Signature == BL_PLD_COMM_SIG) && (CpuCount == 0)) {
-        CpuSmmBase = mSmmBaseInfo->SmmBase;
-        CpuCount   = mSmmBaseInfo->SmmBaseHdr.Count;
-      }
-    }
-
-    for (CpuIdx = 0; CpuIdx < CpuCount; CpuIdx++) {
-      if (ApicId == CpuSmmBase[CpuIdx].ApicId) {
-        SmmRebase (Index, ApicId, CpuSmmBase[CpuIdx].SmmBase);
+    SmmBaseInfo = mSmmBaseInfo;
+    for (CpuIdx = 0; CpuIdx < SmmBaseInfo->SmmBaseHdr.Count; CpuIdx++) {
+      if (ApicId == SmmBaseInfo->SmmBase[CpuIdx].ApicId) {
+        SmmRebase (Index, ApicId, SmmBaseInfo->SmmBase[CpuIdx].SmmBase);
         break;
       }
     }
@@ -482,7 +440,9 @@ MpInit (
     } else {
       DEBUG ((DEBUG_INFO, "MP Init (Run)\n"));
 
+      //
       // Wait for task done
+      //
       ApDataPtr = (AP_DATA_STRUCT *) (ApBuffer + mStubCodeSize);
       ApCounter = (volatile UINT32 *)&ApDataPtr->ApCounter;
       TimeOutCounter = 0;
@@ -523,7 +483,9 @@ MpInit (
         }
       }
 
+      //
       // Restore AP buffer (needed for S3)
+      //
       CopyMem (ApBuffer, mBackupBuffer, AP_BUFFER_SIZE);
       mMpInitPhase = EnumMpInitRun;
     }
@@ -536,19 +498,9 @@ MpInit (
       Status = EFI_UNSUPPORTED;
     } else {
       DEBUG ((DEBUG_INFO, "MP Init (Done)\n"));
-
+      //
       // All APs should be in EnumCpuReady now
-      Status = GetCpuMtrrs (&mMtrrTable);
-      if (!EFI_ERROR(Status)) {
-        for (Index = 1; Index < mSysCpuTask.CpuCount; Index++) {
-          if (mSysCpuTask.CpuTask[Index].State == EnumCpuReady) {
-            MpRunTask (Index, SetCpuMtrrsTask, (UINT64)(UINTN)&mMtrrTable);
-          }
-        }
-        // Allow MTRR sync to complete
-        MicroSecondDelay (100);
-      }
-
+      //
       for (Index = 1; Index < mSysCpuTask.CpuCount; Index++) {
         if (mSysCpuTask.CpuTask[Index].State != EnumCpuReady) {
           DEBUG ((DEBUG_ERROR, " CPU %2d is not ready yet! State = %d\n", Index,
@@ -556,7 +508,9 @@ MpInit (
         }
       }
 
+      //
       // Send an Init IPI to all the APs to put them back in WFS state
+      //
       SendInitIpiAllExcludingSelf();
 
       mMpInitPhase = EnumMpInitDone;

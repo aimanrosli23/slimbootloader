@@ -20,23 +20,24 @@
 #include <Library/CryptoLib.h>
 #include <Library/FirmwareUpdateLib.h>
 #include <Library/ConfigDataLib.h>
-#include <Library/BootOptionLib.h>
 #include <ConfigDataCommonStruct.h>
 
 /**
-  Initialize Boot Device (Media)
+  Get hardware partition handle from boot option info
 
-  This function will initialize boot device based on the info in
-  capsule config data.
+  This function will initialize boot device and get hardware partition
+  handle based on boot option.
 
   @param[in]  CapsuleInfo     Pointer to capsule information config data
+  @param[out] HwPartHandle    Hardware partition handle for boot image
 
   @retval  RETURN_SUCCESS     If partition was found successfully
   @retval  Others             If partition was not found
 **/
 EFI_STATUS
-InitBootDevice (
-  IN  CAPSULE_INFO_CFG_DATA *CapsuleInfo
+FindBootPartition (
+  IN  CAPSULE_INFO_CFG_DATA *CapsuleInfo,
+  OUT EFI_HANDLE            *HwPartHandle
   )
 {
   RETURN_STATUS   Status;
@@ -66,32 +67,6 @@ InitBootDevice (
   Status = MediaInitialize (BootMediumPciBase, DevInitAll);
   if (EFI_ERROR (Status)) {
     return Status;
-  }
-
-  return RETURN_SUCCESS;
-}
-
-/**
-  Get hardware partition handle from boot option info
-
-  This function will get hardware partition handle based on boot option.
-
-  @param[in]  CapsuleInfo     Pointer to capsule information config data
-  @param[out] HwPartHandle    Hardware partition handle for boot image
-
-  @retval  RETURN_SUCCESS     If partition was found successfully
-  @retval  Others             If partition was not found
-**/
-EFI_STATUS
-FindBootPartition (
-  IN  CAPSULE_INFO_CFG_DATA *CapsuleInfo,
-  OUT EFI_HANDLE            *HwPartHandle
-  )
-{
-  RETURN_STATUS   Status;
-
-  if (CapsuleInfo == NULL) {
-    return EFI_INVALID_PARAMETER;
   }
 
   DEBUG ((DEBUG_INFO, "find boot partition\n"));
@@ -268,21 +243,11 @@ LoadCapsuleImage (
   CHAR16              FileName[MAX_FILE_LEN];
   EFI_HANDLE          FileHandle;
 
-
-  if ((CapsuleImage == NULL) || (CapsuleImageSize == NULL)) {
-    Status = EFI_INVALID_PARAMETER;
-    return Status;
-  }
-
-  *CapsuleImageSize = 0;
-  *CapsuleImage     = NULL;
-  FileHandle        = NULL;
-  HwPartHandle      = NULL;
-  FsHandle          = NULL;
-
+  FileHandle = NULL;
+  HwPartHandle = NULL;
   Status = FindBootPartition (CapsuleInfo, &HwPartHandle);
   if (EFI_ERROR (Status)) {
-    goto Done;
+    return Status;
   }
 
   //
@@ -290,7 +255,7 @@ LoadCapsuleImage (
   //
   if (CapsuleInfo->FsType >= EnumFileSystemMax) {
     Status = GetCapsuleFromRawPartition (CapsuleInfo, HwPartHandle, CapsuleImage, (UINTN *)CapsuleImageSize);
-    goto Done;
+    return Status;
   }
 
   DEBUG ((DEBUG_ERROR, "Find partition\n"));
@@ -298,14 +263,21 @@ LoadCapsuleImage (
   Status = MediaGetMediaInfo (HardwareDeviceBlockIndex, &BlockInfo);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "GetInfo Error %r\n", Status));
-    goto Done;
+    return Status;
   }
 
+  FsHandle = NULL;
   Status = InitFileSystem (CapsuleInfo->SwPart, EnumFileSystemTypeFat, HwPartHandle, &FsHandle);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_INFO, "No partitions found, Status = %r\n", Status));
     goto Done;
   }
+
+  //
+  // Get capsule image size.
+  //
+  *CapsuleImageSize = 0;
+  *CapsuleImage     = NULL;
 
   //
   // Find capsule using the name provided in configuration data
@@ -409,9 +381,6 @@ GetCapsuleImage (
 {
   EFI_STATUS              Status;
   CAPSULE_INFO_CFG_DATA   *CapsuleInfo;
-  UINT8                   HwPart;
-  UINT8                   StartPart;
-  UINT8                   EndPart;
 
   Status = EFI_UNSUPPORTED;
   CapsuleInfo = NULL;
@@ -434,39 +403,14 @@ GetCapsuleImage (
     return EFI_NOT_FOUND;
   }
 
-  Status = InitBootDevice (CapsuleInfo);
-  if (EFI_ERROR (Status)) {
+  Status = LoadCapsuleImage (CapsuleInfo, CapsuleImage, CapsuleImageSize);
+  if (EFI_ERROR(Status)) {
     return Status;
   }
 
-  if ((CapsuleInfo->DevType == OsBootDeviceUsb) && (CapsuleInfo->HwPart == 0xFF)) {
-    StartPart = 0;
-    EndPart   = 0x10;
-  } else {
-    StartPart = CapsuleInfo->HwPart;
-    EndPart   = CapsuleInfo->HwPart;
-  }
-
-  for (HwPart = StartPart; HwPart <= EndPart; HwPart++) {
-    CapsuleInfo->HwPart = HwPart;
-
-    DEBUG ((DEBUG_INFO, "Read capsule image from %a DevInstance (%4x) HwPart (%4x) SwPart (%4x) FS (%4a)",
-      GetBootDeviceNameString(CapsuleInfo->DevType), CapsuleInfo->DevInstance, CapsuleInfo->HwPart,
-      CapsuleInfo->SwPart, GetFsTypeString (CapsuleInfo->FsType)));
-    if (CapsuleInfo->FsType < EnumFileSystemMax) {
-      DEBUG ((DEBUG_INFO, " file name: %a\n", CapsuleInfo->FileName));
-    } else {
-      DEBUG ((DEBUG_INFO, " LBA offset: 0x%x \n", CapsuleInfo->LbaAddr));
-    }
-
-    Status = LoadCapsuleImage (CapsuleInfo, CapsuleImage, CapsuleImageSize);
-    if (!EFI_ERROR(Status)) {
-      DEBUG ((DEBUG_INFO, "Capsule Image found, ImageSize=0x%x\n", *CapsuleImageSize));
-      DEBUG ((DEBUG_INFO, "First 256Bytes of capsule image\n"));
-      DumpHex (2, 0, 256, (VOID *)*CapsuleImage);
-      break;
-    }
-  }
+  DEBUG ((DEBUG_INFO, "Capsule Image found, ImageSize=0x%x\n", *CapsuleImageSize));
+  DEBUG ((DEBUG_INFO, "First 256Bytes of capsule image\n"));
+  DumpHex (2, 0, 256, (VOID *)*CapsuleImage);
 
   return Status;
 }

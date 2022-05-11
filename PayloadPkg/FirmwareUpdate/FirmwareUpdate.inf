@@ -49,8 +49,6 @@
   ConfigDataLib
   ContainerLib
   StringSupportLib
-  BootOptionLib
-  TimerLib
 
 [Guids]
   gLoaderMemoryMapInfoGuid
@@ -61,19 +59,16 @@
   gFlashMapInfoGuid
   gBootLoaderVersionFileGuid
   gBootLoaderVersionGuid
-  gEfiGraphicsInfoHobGuid
 
 [Pcd]
   gEfiMdePkgTokenSpaceGuid.PcdPciExpressBaseAddress
   gPayloadTokenSpaceGuid.PcdPayloadHobList
   gPlatformCommonLibTokenSpaceGuid.PcdAcpiPmTimerBase
   gPayloadTokenSpaceGuid.PcdFwUpdStatusBase
+  gPayloadTokenSpaceGuid.PcdRsvdRegionBase
   gPlatformCommonLibTokenSpaceGuid.PcdLowestSupportedFwVer
   gPayloadTokenSpaceGuid.PcdCsmeUpdateEnabled
   gPlatformCommonLibTokenSpaceGuid.PcdCompSignHashAlg
-  gPlatformCommonLibTokenSpaceGuid.PcdConsoleOutDeviceMask
-  gPlatformCommonLibTokenSpaceGuid.PcdFrameBufferMaxConsoleWidth
-  gPlatformCommonLibTokenSpaceGuid.PcdFrameBufferMaxConsoleHeight
 
 [Depex]
   TRUE

@@ -546,7 +546,7 @@ GetPlatformPowerState (
     }
   }
 
-  if ((BootMode == BOOT_WITH_FULL_CONFIGURATION) || (BootMode == BOOT_ON_S5_RESUME)) {
+  if ((BootMode == BOOT_WITH_FULL_CONFIGURATION) || (BootMode == V_ACPI_IO_PM1_CNT_S5)) {
     // Clear power button status to prevent false power button event detection later on
     IoWrite16 (ACPI_BASE_ADDRESS + R_ACPI_IO_PM1_STS,  B_ACPI_IO_PM1_STS_PRBTN);
   }
@@ -651,10 +651,8 @@ DEBUG_CODE_END();
     break;
   case PreMemoryInit:
     GpioInit (PlatformId);
-    break;
   case PostMemoryInit:
     DEBUG ((DEBUG_INFO, "PostMemoryInit called\n"));
-    UpdateMemoryInfo ();
     break;
   case PreTempRamExit:
     break;

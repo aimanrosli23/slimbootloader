@@ -30,7 +30,6 @@
 #include <Library/ContainerLib.h>
 #include <Library/StageLib.h>
 #include <Library/DebugPrintErrorLevelLib.h>
-#include <Register/Intel/ArchitecturalMsr.h>
 #include <Guid/FspHeaderFile.h>
 #include <Guid/FlashMapInfoGuid.h>
 #include <Guid/LoaderPlatformDataGuid.h>

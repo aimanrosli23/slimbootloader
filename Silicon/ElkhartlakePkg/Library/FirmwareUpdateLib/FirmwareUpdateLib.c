@@ -21,7 +21,6 @@
 #include <Library/PchPcrLib.h>
 #include <Library/HeciInitLib.h>
 #include <Library/PciLib.h>
-#include <PchAccess.h>
 #include <CsmeUpdateDriver.h>
 #include "SpiRegionAccess.h"
 
@@ -450,7 +449,7 @@ SetFlashDescriptorLock (
     //
     // Write to flash descriptor master access region
     //
-    Status = BootMediaWriteByType (FlashRegionDescriptor, (UINT32) B_FLASH_FMBA, sizeof(FlashDescMasterAccess), (UINT8 *) FlashDescMasterAccess);
+    Status = BootMediaReadByType (FlashRegionDescriptor, (UINT32) B_FLASH_FMBA, sizeof(FlashDescMasterAccess), (UINT8 *) FlashDescMasterAccess);
     if (EFI_ERROR (Status)) {
       DEBUG((DEBUG_ERROR, "SPI Lock write failed 0x%x\n", Status));
     }

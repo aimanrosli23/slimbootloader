@@ -17,7 +17,6 @@
 #include <Library/PlatformHookLib.h>
 #include <Library/ConfigDataLib.h>
 #include <Library/SpiFlashLib.h>
-#include <Library/PchInfoLib.h>
 #include <FspmUpd.h>
 #include <Library/DebugLib.h>
 #include <IndustryStandard/Pci30.h>
@@ -38,9 +37,6 @@
 #include <PlatformBoardId.h>
 #include <TccConfigSubRegions.h>
 #include <Library/ResetSystemLib.h>
-#include <Library/WatchDogTimerLib.h>
-#include <Library/SocInitLib.h>
-#include <Library/TccLib.h>
 
 CONST PLT_DEVICE  mPlatformDevices[]= {
   {{0x00001700}, OsBootDeviceSata  , 0 },
@@ -49,8 +45,7 @@ CONST PLT_DEVICE  mPlatformDevices[]= {
   {{0x01000000}, OsBootDeviceMemory, 0 },
   {{0x00010000}, OsBootDeviceNvme  , 0 },
   {{0x00020000}, OsBootDeviceNvme  , 1 },
-  {{0x00050000}, OsBootDeviceNvme  , 2 },
-  {{0x00000200}, PlatformDeviceGraphics, 0},
+  {{0x00050000}, OsBootDeviceNvme  , 2 }
 };
 
 VOID
@@ -102,36 +97,19 @@ TccModePreMemConfig (
   FspmUpd->FspmConfig.DsoTuningEnPreMem      = TccCfgData->TccTuning;
   FspmUpd->FspmConfig.TccErrorLogEnPreMem    = TccCfgData->TccErrorLog;
 
-  // S0ix is disabled if TCC is enabled.
-  if (PLAT_FEAT.S0ixEnable == 1) {
-    PLAT_FEAT.S0ixEnable = 0;
-    DEBUG ((DEBUG_INFO, "S0ix is turned off when TCC is enabled\n"));
-  }
-
-  if (IsMarkedBadDso ()) {
-    DEBUG ((DEBUG_ERROR, "Incorrect TCC tuning parameters. Platform rebooted with default values.\n"));
-    FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
-  } else if (IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS) && IsWdtTimeout()) {
-    DEBUG ((DEBUG_ERROR, "Incorrect TCC tuning parameters. Platform rebooted with default values.\n"));
-    WdtClearScratchpad (WDT_FLAG_TCC_DSO_IN_PROGRESS);
-    FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
-    InvalidateBadDso ();
-  } else if (TccCfgData->TccTuning != 0) {
-    // Setup Watch dog timer
-    WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
-
-    // Load TCC stream config from container
-    TccStreamBase = NULL;
-    TccStreamSize = 0;
-    Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
+  // Load TCC stream config from container
+  TccStreamBase = NULL;
+  TccStreamSize = 0;
+  Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
                           (VOID **)&TccStreamBase, &TccStreamSize);
-    if (EFI_ERROR (Status) || (TccStreamSize < sizeof(TCC_STREAM_CONFIGURATION))) {
-      DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
-    } else {
-      FspmUpd->FspmConfig.TccStreamCfgBasePreMem = (UINT32)(UINTN)TccStreamBase;
-      FspmUpd->FspmConfig.TccStreamCfgSizePreMem = TccStreamSize;
-      DEBUG ((DEBUG_INFO, "Load TCC stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
+  if (EFI_ERROR (Status) || (TccStreamSize < sizeof(TCC_STREAM_CONFIGURATION))) {
+    DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
+  } else {
+    FspmUpd->FspmConfig.TccStreamCfgBasePreMem = (UINT32)(UINTN)TccStreamBase;
+    FspmUpd->FspmConfig.TccStreamCfgSizePreMem = TccStreamSize;
+    DEBUG ((DEBUG_INFO, "Load TCC stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
 
+    if (TccCfgData->TccTuning != 0) {
       StreamConfig = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
 
@@ -140,9 +118,6 @@ TccModePreMemConfig (
       FspmUpd->FspmConfig.PowerDownMode          = PolicyConfig->MemPowerDown;
       FspmUpd->FspmConfig.DisPgCloseIdleTimeout  = PolicyConfig->DisPgCloseIdle;
       PLAT_FEAT.S0ixEnable                       = PolicyConfig->Sstates;
-      if (PLAT_FEAT.S0ixEnable == 1) {
-        DEBUG ((DEBUG_INFO, "S0ix is forced turning on by TCC DSO\n"));
-      }
       DEBUG ((DEBUG_INFO, "Dump TCC DSO BIOS settings:\n"));
       DumpHex (2, 0, sizeof(BIOS_SETTINGS), PolicyConfig);
     }
@@ -180,6 +155,7 @@ UpdateFspConfig (
   FSPM_UPD                 *FspmUpd;
   FSPM_ARCH_UPD            *FspmArchUpd;
   FSP_M_CONFIG             *Fspmcfg;
+  SECURITY_CFG_DATA        *SecCfgData;
   MEMORY_CFG_DATA          *MemCfgData;
   GRAPHICS_CFG_DATA        *GfxCfgData;
   UINT8                    Index;
@@ -198,16 +174,14 @@ UpdateFspConfig (
 
   BoardId = GetPlatformId();
 
-  // SGX is not supported on this platform
-  Fspmcfg->EnableSgx = 0;
-  switch (GetPlatformId ()) {
-    case BoardIdTglHDdr4SODimm:
-    case 0xF:
-      Fspmcfg->PrmrrSize          = 0x100000;
-      Fspmcfg->MmioSizeAdjustment = 0x308;
-      break;
-    default:
-      break;
+  SecCfgData = (SECURITY_CFG_DATA *)FindConfigDataByTag (CDATA_SECURITY_TAG);
+  if (SecCfgData != NULL) {
+    DEBUG ((DEBUG_INFO, "Load Security Cfg Data\n"));
+    // Configure Sgx SPD Data
+    Fspmcfg->EnableSgx = SecCfgData->EnableSgx;
+    Fspmcfg->PrmrrSize = SecCfgData->PrmrrSize;
+  } else {
+    DEBUG ((DEBUG_INFO, "Failed to find security CFG!\n"));
   }
 
   DebugPort = GetDebugPort ();
@@ -331,10 +305,6 @@ UpdateFspConfig (
   Fspmcfg->EnhancedInterleave   = MemCfgData->EnhancedInterleave;
   Fspmcfg->RankInterleave       = MemCfgData->RankInterleave;
   Fspmcfg->RhPrevention         = MemCfgData->RhPrevention;
-
-  // Skip CPU replacement check for embedded design to always enable fast boot
-  Fspmcfg->SkipCpuReplacementCheck = 1;
-
   if(MemCfgData->RhPrevention == 1) {
     Fspmcfg->RhSolution         = MemCfgData->RhSolution;
   }
@@ -345,7 +315,7 @@ UpdateFspConfig (
   Fspmcfg->ChHashEnable         = MemCfgData->ChHashEnable;
   Fspmcfg->ChHashInterleaveBit  = MemCfgData->ChHashInterleaveBit;
   Fspmcfg->ChHashMask           = MemCfgData->ChHashMask;
-
+//    Fspmcfg->CkeRankMapping       = MemCfgData->CkeRankMapping;
   Fspmcfg->RemapEnable          = MemCfgData->RemapEnable;
   Fspmcfg->ScramblerSupport     = MemCfgData->ScramblerSupport;
 
@@ -519,15 +489,9 @@ UpdateFspConfig (
   FeaturesCfgData = (FEATURES_CFG_DATA *) FindConfigDataByTag (CDATA_FEATURES_TAG);
   if (FeaturesCfgData != NULL) {
     PLAT_FEAT.S0ixEnable = FeaturesCfgData->Features.S0ix;
-
-    // S0ix is disabled if TSN is enabled.
-    if ((PLAT_FEAT.S0ixEnable == 1) && (SiCfgData != NULL) && (SiCfgData->PchTsnEnable == 1)) {
-      PLAT_FEAT.S0ixEnable = 0;
-      DEBUG ((DEBUG_INFO, "S0ix is turned off when TSN is enabled\n"));
-    }
   }
 
-  // Update TCC related UPDs if TCC is enabled
+    // Update TCC related UPDs if TCC is enabled
   if (FeaturePcdGet (PcdTccEnabled)) {
     TccModePreMemConfig (FspmUpd);
   }
@@ -784,12 +748,12 @@ BoardInit (
   IN  BOARD_INIT_PHASE  InitPhase
 )
 {
-  UINTN                 PmcMmioBase;
+  UINTN                 PmcBase;
   PLT_DEVICE_TABLE      *PltDeviceTable;
   UINT8                 BoardId;
   SILICON_CFG_DATA      *SiCfgData;
 
-  PmcMmioBase = PCH_PWRM_BASE_ADDRESS;
+  PmcBase = MM_PCI_ADDRESS (0, PCI_DEVICE_NUMBER_PCH_PMC, PCI_FUNCTION_NUMBER_PCH_PMC, 0);
 
   switch (InitPhase) {
   case PreConfigInit:
@@ -808,8 +772,6 @@ DEBUG_CODE_BEGIN();
       DEBUG ((DEBUG_INFO, "[Boot Guard] Boot Guard is Enabled Successfully.\n", Data));
     }
 DEBUG_CODE_END();
-
-    SetSocSku (PchSeries ());
 
     PltDeviceTable = (PLT_DEVICE_TABLE *)AllocatePool (sizeof (PLT_DEVICE_TABLE) + sizeof (mPlatformDevices));
     if (PltDeviceTable != NULL) {
@@ -847,7 +809,8 @@ DEBUG_CODE_END();
     // Set the DISB bit in PCH (DRAM Initialization Scratchpad Bit)
     // prior to starting DRAM Initialization Sequence.
     //
-    MmioOr32 (PmcMmioBase + R_PMC_PWRM_GEN_PMCON_A, B_PCH_PMC_GEN_PMCON_A_DISB);
+    MmioOr32 (PmcBase + R_PCH_PMC_GEN_PMCON_A, B_PCH_PMC_GEN_PMCON_A_DISB);
+
     switch (GetPlatformId ()) {
       case BoardIdTglHDdr4SODimm:
       case 0xF:
@@ -859,13 +822,14 @@ DEBUG_CODE_END();
         ConfigureGpio (CDATA_NO_TAG, sizeof (mGpioTablePreMemTglUDdr4) / sizeof (mGpioTablePreMemTglUDdr4[0]), (UINT8*)mGpioTablePreMemTglUDdr4);
         break;
     }
+
     break;
   case PostMemoryInit:
     //
     // Clear the DISB bit after completing DRAM Initialization Sequence
     //
-    MmioAnd32 (PmcMmioBase + R_PMC_PWRM_GEN_PMCON_A, (UINT32)~B_PCH_PMC_GEN_PMCON_A_DISB);
-    UpdateMemoryInfo ();
+    MmioAnd32 (PmcBase + R_PCH_PMC_GEN_PMCON_A, 0);
+
     break;
   case PreTempRamExit:
     break;

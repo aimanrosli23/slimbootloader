@@ -1,6 +1,6 @@
 /** @file
 
-  Copyright (c) 2017 - 2022, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2017 - 2020, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -216,11 +216,7 @@ PciParseBar (
 
   } else {
 
-    if (Offset == PCI_EXPANSION_ROM_BASE) {
-      Mask  = 0xfffff800;
-    } else {
-      Mask  = 0xfffffff0;
-    }
+    Mask  = 0xfffffff0;
 
     PciIoDevice->PciBar[BarIndex].BaseAddress = OriginalValue & Mask;
 
@@ -470,8 +466,6 @@ GatherDeviceInfo (
   UINTN                           BarIndex;
   PCI_IO_DEVICE                   *PciIoDevice;
   UINT16                          Value;
-  BOOLEAN                         Downgrade;
-  CONST PCI_ENUM_POLICY_INFO     *EnumPolicy;
 
   PciIoDevice = CreatePciIoDevice (
                   Bridge,
@@ -490,24 +484,8 @@ GatherDeviceInfo (
   //
   // Inherit parent decode capability
   //
-  EnumPolicy = (PCI_ENUM_POLICY_INFO *)PcdGetPtr (PcdPciEnumPolicyInfo);
   if (PciIoDevice->Parent != NULL) {
     PciIoDevice->Decodes = PciIoDevice->Parent->Decodes;
-    Downgrade = FALSE;
-    if (Bus == 0) {
-      if (EnumPolicy->Downgrade.Bus0 == 1) {
-        Downgrade = TRUE;
-      } else if (EnumPolicy->Downgrade.Bus0 == 2) {
-        if (!(IS_PCI_DISPLAY(&PciIoDevice->Pci))) {
-          Downgrade = TRUE;
-        }
-      }
-      if (Downgrade) {
-        PciIoDevice->Decodes &= (UINT32)~(EFI_BRIDGE_IO32_DECODE_SUPPORTED);
-        PciIoDevice->Decodes &= (UINT32)~(EFI_BRIDGE_MEM64_DECODE_SUPPORTED);
-        PciIoDevice->Decodes &= (UINT32)~(EFI_BRIDGE_PMEM64_DECODE_SUPPORTED);
-      }
-    }
   }
 
   //
@@ -515,20 +493,6 @@ GatherDeviceInfo (
   //
   for (Offset = 0x10, BarIndex = 0; Offset <= 0x24 && BarIndex < PCI_MAX_BAR; BarIndex++) {
     Offset = PciParseBar (PciIoDevice, Offset, BarIndex);
-  }
-
-  //
-  // Find a available PCI bar slot for PCI expansion ROM
-  //
-  if (EnumPolicy->Flag.FlagAllocRomBar == 1) {
-    BarIndex = PCI_MAX_BAR - 1;
-    while (BarIndex > 0) {
-      if (PciIoDevice->PciBar[BarIndex].BarType == PciBarTypeUnknown) {
-        PciParseBar (PciIoDevice, PCI_EXPANSION_ROM_BASE, BarIndex);
-        break;
-      }
-      BarIndex--;
-    }
   }
 
   //
@@ -1628,12 +1592,12 @@ PciProgramResources (
       Address = ResBase[Index];
       Address = ALIGN (Address, Root->PciBar[BarType - 1].Alignment);
       Root->PciBar[BarType - 1].BaseAddress = Address;
+      ProgramResource (Root, BarType);
+
       if (Root->PciBar[BarType - 1].Length > 0) {
         ResBase[Index] += Root->PciBar[BarType - 1].Length;
         ASSERT (ResBase[Index] <= ResLimit[Index]);
       }
-
-      ProgramResource (Root, BarType);
     }
 
     CurrentLink = CurrentLink->ForwardLink;
@@ -1725,6 +1689,11 @@ PciScanRootBridges (
     if (PciExpressRead16 (Address) != 0xFFFF) {
       Root = CreatePciIoDevice (NULL, NULL, (UINT8)Bus, 0, 0);
       Root->Decodes = RootBridgeDecodes;
+      if ((Bus == 0) && (EnumPolicy->Downgrade.Bus0 == 1)) {
+        Root->Decodes &= (UINT32)~(EFI_BRIDGE_IO32_DECODE_SUPPORTED);
+        Root->Decodes &= (UINT32)~(EFI_BRIDGE_MEM64_DECODE_SUPPORTED);
+        Root->Decodes &= (UINT32)~(EFI_BRIDGE_PMEM64_DECODE_SUPPORTED);
+      }
       Root->BusNumberRanges.BusBase  = (UINT8)Bus;
       Root->BusNumberRanges.BusLimit = BusLimit;
 

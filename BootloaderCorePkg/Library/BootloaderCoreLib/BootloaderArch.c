@@ -7,7 +7,7 @@
 
 #include <PiPei.h>
 #include <Library/PcdLib.h>
-#include <BootloaderCoreGlobal.h>
+#include <Library/BootloaderCoreLib.h>
 
 /**
   This function sets the Loader global data pointer.

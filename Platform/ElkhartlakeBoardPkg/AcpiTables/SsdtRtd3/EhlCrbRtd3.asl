@@ -397,7 +397,7 @@ External(XDCE)
         Store (Zero, U3EN)
 
         If(LEqual(DVID,0xFFFF)) {
-          Return()
+          Return(Zero)
         }
         \_SB.CSD0(MODPHY_SPD_GATING_XDCI)
       }

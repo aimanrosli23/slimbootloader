@@ -24,7 +24,7 @@ GetDebugPrintErrorLevel (
   VOID
   )
 {
-  return GetDebugErrorLevel ();
+  return ((LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer())->DebugPrintErrorLevel;
 }
 
 /**
@@ -42,6 +42,6 @@ SetDebugPrintErrorLevel (
   UINT32  ErrorLevel
   )
 {
-  SetDebugErrorLevel (ErrorLevel);
+  ((LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer())->DebugPrintErrorLevel = ErrorLevel;
   return TRUE;
 }

@@ -168,9 +168,9 @@ DefinitionBlock (
       // Update APIC Interrupt descriptor
       CreateDWordField (INTR, INTI._INT, NUMI) // Interrupt Number
       Store (INUM(Arg0), NUMI)
-      CreateBitField (INTR, INTI._HE, LEVI) // Level or Edge
+      CreateByteField (INTR, INTI._HE, LEVI) // Level or Edge
       Store (Arg1, LEVI)
-      CreateBitField (INTR, INTI._LL, ACTI) // Active High or Low
+      CreateByteField (INTR, INTI._LL, ACTI) // Active High or Low
       Store (Arg2, ACTI)
 
       Return (INTR)

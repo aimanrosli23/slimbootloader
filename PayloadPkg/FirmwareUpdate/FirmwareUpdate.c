@@ -22,29 +22,12 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Library/PayloadMemoryAllocationLib.h>
 #include <Guid/MemoryMapInfoGuid.h>
 #include <Guid/LoaderPlatformInfoGuid.h>
+#include <Library/ResetSystemLib.h>
 #include <Library/SecureBootLib.h>
 #include <Library/BootloaderCommonLib.h>
 #include <Library/FirmwareUpdateLib.h>
 #include <Guid/SystemResourceTable.h>
-#include <Library/GraphicsLib.h>
-#include <Library/ConsoleOutLib.h>
-#include <Guid/OsBootOptionGuid.h>
 #include "FirmwareUpdateHelper.h"
-
-UINT32   mSblImageBiosRgnOffset;
-
-/**
-  Retrieve the SBL rom image offset within BIOS region.
-
-  @retval  The SBL rom image offset within BIOS region
-**/
-UINT32
-GetRomImageOffsetInBiosRegion (
-  VOID
-  )
-{
-  return mSblImageBiosRgnOffset;
-}
 
 /**
   Verify the firmware version to make sure it is no less than current firmware version.
@@ -374,7 +357,9 @@ EnforceFwUpdatePolicy (
   }
 
   if (ResetRequired) {
-    Reboot (EfiResetCold);
+    DEBUG((DEBUG_ERROR, "Reset required to proceed with the firmware update.\n"));
+    ResetSystem (EfiResetCold);
+    CpuDeadLoop ();
   }
 
   return EFI_SUCCESS;
@@ -421,7 +406,9 @@ AfterUpdateEnforceFwUpdatePolicy (
   }
 
   if (FwPolicy.Fields.Reboot == 1) {
-    Reboot (EfiResetWarm);
+    DEBUG((DEBUG_ERROR, "Reset required to proceed with the firmware update.\n"));
+    ResetSystem (EfiResetWarm);
+    CpuDeadLoop ();
   }
 
   //
@@ -564,10 +551,13 @@ AuthenticateCapsule (
   )
 {
   EFI_STATUS                Status;
-
   FIRMWARE_UPDATE_HEADER    *Header;
   PUB_KEY_HDR               *PubKeyHdr;
   SIGNATURE_HDR             *SignatureHdr;
+  FW_UPDATE_STATUS          FwUpdStatus;
+  UINT32                    FwUpdStatusOffset;
+
+  FwUpdStatusOffset = PcdGet32(PcdFwUpdStatusBase);
 
   Header = (FIRMWARE_UPDATE_HEADER *)FwImage;
   if (FwSize < sizeof (FIRMWARE_UPDATE_HEADER)) {
@@ -598,12 +588,46 @@ AuthenticateCapsule (
 
   PubKeyHdr       = (PUB_KEY_HDR *) (FwImage + Header->PubKeyOffset);
   SignatureHdr    = (SIGNATURE_HDR *) (FwImage + Header->SignatureOffset);
+
+  //
+  // Copy fw update status structure to memory
+  //
+  Status = BootMediaRead (FwUpdStatusOffset, sizeof(FW_UPDATE_STATUS), (UINT8 *)&FwUpdStatus);
+  if (EFI_ERROR (Status)) {
+    DEBUG((DEBUG_ERROR, "BootMediaRead failed with status: %r\n", Status));
+    return Status;
+  }
+
+  //
+  // If capsule signature in flash does not match with capsule signature,
+  // it indicates that capsule image is modified in between firmware update.
+  //
+  if (*(UINT32 *)(FwUpdStatus.CapsuleSig) != 0xFFFFFFFF) {
+    if (CompareMem(&FwUpdStatus.CapsuleSig, SignatureHdr, FW_UPDATE_SIG_LENGTH) != 0) {
+      return EFI_COMPROMISED_DATA;
+    }
+  }
+
   Status = DoRsaVerify (FwImage, Header->SignatureOffset, HASH_USAGE_PUBKEY_FWU, SignatureHdr, PubKeyHdr, PcdGet8(PcdCompSignHashAlg), NULL, NULL);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "Image verification failed, %r!\n", Status));
     return EFI_SECURITY_VIOLATION;
   }
 
+  //
+  // If this is first time processing the capsule, save the capsule signature in flash until
+  // the end of firmware update
+  //
+  if (*(UINT32 *)(FwUpdStatus.CapsuleSig) != 0xFFFFFFFF) {
+
+    CopyMem((VOID *)&FwUpdStatus.CapsuleSig, (VOID *)SignatureHdr, FW_UPDATE_SIG_LENGTH);
+
+    Status = BootMediaWrite (FwUpdStatusOffset, sizeof(FW_UPDATE_STATUS), (UINT8 *)&FwUpdStatus);
+    if (EFI_ERROR (Status)) {
+      DEBUG((DEBUG_ERROR, "BootMediaWrite failed with status %r\n", Status));
+      return Status;
+    }
+  }
   return EFI_SUCCESS;
 }
 
@@ -670,8 +694,6 @@ ProcessCapsule (
   FIRMWARE_UPDATE_HEADER        *FwUpdHeader;
   EFI_FW_MGMT_CAP_HEADER        *CapHeader;
   EFI_FW_MGMT_CAP_IMAGE_HEADER  *ImgHeader;
-  SIGNATURE_HDR                 *SignatureHdr;
-  UINT32                        SigLen;
 
   FwUpdStatusOffset = PcdGet32(PcdFwUpdStatusBase);
 
@@ -711,8 +733,6 @@ ProcessCapsule (
   // set SM to capsule processing stage, this will reset back to
   // init at the end of firmware update
   //
-  SignatureHdr = (SIGNATURE_HDR *) (FwImage + ((FIRMWARE_UPDATE_HEADER *)FwImage)->SignatureOffset);
-  SigLen       = MIN (SignatureHdr->SigSize, sizeof(FwUpdStatus.CapsuleSig));
   if (FwUpdStatus.StateMachine == FW_UPDATE_SM_INIT) {
     //
     // Initialize reserved region structure
@@ -720,11 +740,6 @@ ProcessCapsule (
     FwUpdStatus.Signature = FW_UPDATE_STATUS_SIGNATURE;
     FwUpdStatus.Version = FW_UPDATE_STATUS_VERSION;
     FwUpdStatus.Length = sizeof(FW_UPDATE_STATUS);
-
-    //
-    // Save the current capsule signature into flash
-    //
-    CopyMem (FwUpdStatus.CapsuleSig, SignatureHdr->Signature, SigLen);
 
     Status = BootMediaWrite(FwUpdStatusOffset, sizeof(FW_UPDATE_STATUS), (UINT8 *)&FwUpdStatus);
     if (EFI_ERROR(Status)) {
@@ -741,15 +756,6 @@ ProcessCapsule (
     //
     ClearFwUpdateTrigger();
   } else {
-
-    //
-    // If capsule signature in flash does not match with capsule signature,
-    // it indicates that capsule image is modified in between firmware update.
-    //
-    if (CompareMem (FwUpdStatus.CapsuleSig, SignatureHdr->Signature, SigLen) != 0) {
-      return EFI_COMPROMISED_DATA;
-    }
-
     return EFI_SUCCESS;
   }
 
@@ -916,13 +922,10 @@ ApplyFwImage (
   OUT BOOLEAN                         *ResetRequired
   )
 {
-  EFI_STATUS              Status;
-  UINT32                  Signature;
-  BOOT_PARTITION          Partition;
-  VOID                    *CsmeUpdateInData;
-  FIRMWARE_UPDATE_HEADER  *CapHdr;
-
-  CapHdr = (FIRMWARE_UPDATE_HEADER *)CapImage;
+  EFI_STATUS      Status;
+  UINT32          Signature;
+  VOID            *CsmeUpdateInData;
+  BOOT_PARTITION  Partition;
 
   Status = EFI_SUCCESS;
   *ResetRequired = FALSE;
@@ -935,12 +938,7 @@ ApplyFwImage (
 
   switch (Signature) {
   case FW_UPDATE_COMP_BIOS_REGION:
-    if ((CapHdr->CapsuleFlags & CAPSULE_FLAG_FORCE_BIOS_UPDATE) != 0) {
-      Status = UpdateFullBiosRegion (ImageHdr);
-      *ResetRequired = TRUE;
-    } else {
-      Status = UpdateSystemFirmware (ImageHdr);
-    }
+    Status = UpdateSystemFirmware(ImageHdr);
     break;
   case FW_UPDATE_COMP_CSME_REGION:
     Status = EFI_UNSUPPORTED;
@@ -951,7 +949,8 @@ ApplyFwImage (
       Partition = (BOOT_PARTITION)GetCurrentBootPartition ();
       if (Partition == BackupPartition) {
         SetBootPartition (PrimaryPartition);
-        Reboot (EfiResetCold);
+        ResetSystem (EfiResetCold);
+        CpuDeadLoop ();
       }
       CsmeUpdateInData = InitCsmeUpdInputData();
       if (CsmeUpdateInData != NULL) {
@@ -993,7 +992,6 @@ InitFirmwareUpdate (
   BOOLEAN                     ResetRequired;
   FW_UPDATE_COMP_STATUS       FwUpdCompStatus[MAX_FW_COMPONENTS];
   EFI_FW_MGMT_CAP_IMAGE_HEADER  *ImgHdr;
-  FIRMWARE_UPDATE_HEADER        *CapHdr;
 
   ImgHdr = NULL;
   FwUpdStatusOffset = PcdGet32(PcdFwUpdStatusBase);
@@ -1005,69 +1003,35 @@ InitFirmwareUpdate (
   Status = GetCapsuleImage (&CapsuleImage, &CapsuleSize);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "GetCapsuleImage failed with status = %r\n", Status));
+    return Status;
   }
+  DEBUG ((DEBUG_INFO, "CapsuleImage: 0x%p, CapsuleSize: 0x%X\n", CapsuleImage, CapsuleSize));
 
   //
   // 2. Authenticate capsule image.
   //
-  if (!EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_INFO, "CapsuleImage: 0x%p, CapsuleSize: 0x%X\n", CapsuleImage, CapsuleSize));
-    Status = AuthenticateCapsule (CapsuleImage, CapsuleSize);
-    if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "AuthenticateCapsule, Status = 0x%x\n", Status));
-    }
+  Status = AuthenticateCapsule (CapsuleImage, CapsuleSize);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "AuthenticateCapsule, Status = 0x%x\n", Status));
+    return Status;
   }
 
   //
   // 3. Process capsule image.
   //
-  if (!EFI_ERROR (Status)) {
-    Status = ProcessCapsule (CapsuleImage, CapsuleSize);
-    if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "ProcessCapsule, Status = 0x%x\n", Status));
-    }
+  Status = ProcessCapsule (CapsuleImage, CapsuleSize);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "ProcessCapsule, Status = 0x%x\n", Status));
+    return Status;
   }
 
   //
   // Read the component structure in the reserved region
   //
-  if (!EFI_ERROR (Status)) {
-    Status = BootMediaRead ((FwUpdStatusOffset + sizeof(FW_UPDATE_STATUS)), \
-                            MAX_FW_COMPONENTS * sizeof(FW_UPDATE_COMP_STATUS), (UINT8 *)&FwUpdCompStatus);
-    if (EFI_ERROR (Status)) {
-      DEBUG((DEBUG_ERROR, "BootMediaRead. offset: 0x%llx, Status = 0x%x\n", (FwUpdStatusOffset + sizeof(FW_UPDATE_STATUS)), Status));
-    }
-  }
-
+  Status = BootMediaRead ((FwUpdStatusOffset + sizeof(FW_UPDATE_STATUS)), \
+                          MAX_FW_COMPONENTS * sizeof(FW_UPDATE_COMP_STATUS), (UINT8 *)&FwUpdCompStatus);
   if (EFI_ERROR (Status)) {
-    //
-    // Error condition
-    // Clear state machine anyway to prevent FWU loop.
-    //
-    SetStateMachineFlag (FW_UPDATE_SM_DONE);
-    return Status;
-  }
-
-  //
-  // Handle full BIOS region update separately.
-  // It needs to consider cases that the user updates firmware from SBL FW to UEFI FW.
-  // SBL FWU state machine and status stored in flash should not be updated in a successful
-  // update since the new FW might have used this region for other purpose.
-  //
-  CapHdr = (FIRMWARE_UPDATE_HEADER *)CapsuleImage;
-  if ((CapHdr->CapsuleFlags & CAPSULE_FLAG_FORCE_BIOS_UPDATE) != 0) {
-    // Only expect a single BIOS component update.
-    Status = FindImage (FwUpdCompStatus[0].HardwareInstance, CapsuleImage, CapsuleSize, &ImgHdr);
-    if (!EFI_ERROR (Status)) {
-      Status = ApplyFwImage(CapsuleImage, CapsuleSize, ImgHdr, &ResetRequired);
-    }
-    DEBUG ((DEBUG_INFO, "Full BIOS region update status: %r\n", Status));
-    if (EFI_ERROR (Status)) {
-      // Clear state machine anyway to prevent FWU loop.
-      SetStateMachineFlag (FW_UPDATE_SM_DONE);
-    }
-    // Always reboot since full BIOS was updated
-    Reboot (EfiResetCold);
+    DEBUG((DEBUG_ERROR, "BootMediaRead. offset: 0x%llx, Status = 0x%x\n", (FwUpdStatusOffset + sizeof(FW_UPDATE_STATUS)), Status));
     return Status;
   }
 
@@ -1102,13 +1066,11 @@ InitFirmwareUpdate (
       Status = FindImage(FwUpdCompStatus[Count].HardwareInstance, CapsuleImage, CapsuleSize, &ImgHdr);
       if (!EFI_ERROR (Status)) {
         //
-        // Start firmware udpate for the component, exclude CSME driver (CSMD)
+        // Start firmware udpate for the component
         //
-        if ((UINT32)ImgHdr->UpdateHardwareInstance != FW_UPDATE_COMP_CSME_DRIVER) {
-          Status = ApplyFwImage(CapsuleImage, CapsuleSize, ImgHdr, &ResetRequired);
-          if (EFI_ERROR (Status)) {
-            DEBUG((DEBUG_ERROR, "ApplyFwImage failed with Status = %r\n", Status));
-          }
+        Status = ApplyFwImage(CapsuleImage, CapsuleSize, ImgHdr, &ResetRequired);
+        if (EFI_ERROR (Status)) {
+          DEBUG((DEBUG_ERROR, "ApplyFwImage failed with Status = %r\n", Status));
         }
       } else {
         DEBUG((DEBUG_ERROR, "FindImage failed with Status = %r\n", Status));
@@ -1127,7 +1089,8 @@ InitFirmwareUpdate (
       // Reset system if required
       //
       if (ResetRequired == TRUE) {
-        Reboot (EfiResetCold);
+        ResetSystem (EfiResetCold);
+        CpuDeadLoop ();
       }
     }
   }
@@ -1209,47 +1172,6 @@ EndFirmwareUpdate (
 }
 
 /**
-  Initialize platform console.
-
-  @retval  EFI_NOT_FOUND    No additional console was found.
-  @retval  EFI_SUCCESS      Console has been initialized successfully.
-  @retval  Others           There is error during console initialization.
-**/
-EFI_STATUS
-InitConsole (
-  VOID
-)
-{
-  EFI_STATUS                Status;
-  UINT32                    Height;
-  UINT32                    Width;
-  UINT32                    OffX;
-  UINT32                    OffY;
-  EFI_PEI_GRAPHICS_INFO_HOB *GfxInfoHob;
-
-  Status = EFI_NOT_FOUND;
-
-  if (PcdGet32 (PcdConsoleOutDeviceMask) & ConsoleOutFrameBuffer) {
-    GfxInfoHob = (EFI_PEI_GRAPHICS_INFO_HOB *)GetGuidHobData (NULL, NULL, &gEfiGraphicsInfoHobGuid);
-    if (GfxInfoHob != NULL) {
-      Width  = GfxInfoHob->GraphicsMode.HorizontalResolution;
-      Height = GfxInfoHob->GraphicsMode.VerticalResolution;
-      if ((PcdGet32 (PcdFrameBufferMaxConsoleWidth) > 0) && (Width > PcdGet32 (PcdFrameBufferMaxConsoleWidth))) {
-        Width = PcdGet32 (PcdFrameBufferMaxConsoleWidth);
-      }
-      if ((PcdGet32 (PcdFrameBufferMaxConsoleHeight) > 0) && (Height > PcdGet32 (PcdFrameBufferMaxConsoleHeight))) {
-        Height = PcdGet32 (PcdFrameBufferMaxConsoleHeight);
-      }
-      OffX = (GfxInfoHob->GraphicsMode.HorizontalResolution - Width) / 2;
-      OffY = (GfxInfoHob->GraphicsMode.VerticalResolution - Height) / 2;
-      Status = InitFrameBufferConsole (GfxInfoHob, Width, Height, OffX, OffY);
-    }
-  }
-
-  return Status;
-}
-
-/**
   Payload main entry.
 
   This function will continue Payload execution with a new memory based stack.
@@ -1269,14 +1191,8 @@ PayloadMain (
   UINT32        RsvdSize;
   FLASH_MAP     *FlashMap;
   EFI_STATUS    Status;
-  UINT32        BiosRgnSize;
 
-  //
-  // Prepare Console Print
-  //
-  InitConsole ();
-  ConsolePrint ("Starting Firmware Update\n");
-
+  DEBUG ((DEBUG_INFO, "Starting Firmware Update\n"));
   //
   // Initialize boot media to look for the capsule image
   //
@@ -1288,8 +1204,7 @@ PayloadMain (
   FlashMap = GetFlashMapPtr();
   if (FlashMap == NULL) {
     DEBUG((DEBUG_ERROR, "Could not get flash map\n"));
-    Status = EFI_NO_MAPPING;
-    goto EndOfFwu;
+    return;
   }
 
   //
@@ -1298,35 +1213,21 @@ PayloadMain (
   Status = GetComponentInfoByPartition (FLASH_MAP_SIG_BLRESERVED, FALSE, &RsvdBase, &RsvdSize);
   if (EFI_ERROR (Status)) {
     DEBUG((DEBUG_ERROR, "Could not get component information for bootloader reserved region\n"));
-    Status = EFI_NO_MAPPING;
-    goto EndOfFwu;
+    return;
   }
 
   //
-  // Get SBL rom image start offset in BIOS region
-  // Specially, if SBL rom image occupies the whole BIOS region, this offset is 0
+  // Set PCD for Firmware Update status structure base
   //
-  mSblImageBiosRgnOffset = 0;
-  Status = BootMediaGetRegion (FlashRegionBios, NULL, &BiosRgnSize);
-  if (!EFI_ERROR (Status)) {
-    DEBUG((DEBUG_INFO, "BIOS Region Size: 0x%08X\n", BiosRgnSize));
-    DEBUG((DEBUG_INFO, "SBL  ROM    Size: 0x%08X\n", FlashMap->RomSize));
-    if (BiosRgnSize < FlashMap->RomSize) {
-      Status = EFI_ABORTED;
-    } else {
-      mSblImageBiosRgnOffset = BiosRgnSize - FlashMap->RomSize;
-    }
-  }
+  Status = PcdSet32S (PcdFwUpdStatusBase, (FlashMap->RomSize - (~RsvdBase + 1)));
   if (EFI_ERROR (Status)) {
-    DEBUG((DEBUG_ERROR, "Could not fit image into BIOS region\n"));
-    goto EndOfFwu;
+    return;
   }
 
-
-  //
-  // Set PCD for Firmware Update status structure offset within BIOS region
-  //
-  (VOID) PcdSet32S (PcdFwUpdStatusBase, mSblImageBiosRgnOffset + (FlashMap->RomSize - (~RsvdBase + 1)));
+  Status = PcdSet32S (PcdRsvdRegionBase, RsvdBase);
+  if (EFI_ERROR (Status)) {
+    return;
+  }
 
   //
   // Perform firmware update
@@ -1343,12 +1244,15 @@ PayloadMain (
     }
   }
 
-EndOfFwu:
   //
   // Terminate firmware update
   //
-  ConsolePrint ("Exiting Firmware Update (Status: %r)\n", Status);
-  EndFirmwareUpdate ();
+  Status = EndFirmwareUpdate ();
+  if (EFI_ERROR (Status)) {
+    DEBUG((DEBUG_ERROR, "EndFirmwareUpdate, Status = 0x%x\n", Status));
+  }
 
-  Reboot (EfiResetCold);
+  DEBUG((DEBUG_ERROR, "Reset required to proceed with the firmware update.\n"));
+  ResetSystem (EfiResetCold);
+  CpuDeadLoop ();
 }

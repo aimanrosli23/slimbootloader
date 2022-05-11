@@ -54,9 +54,9 @@ SerialPortReadRegister (
   )
 {
   UINT8    Data;
-  UINTN    Base;
+  UINT32   Base;
 
-  Base   = (UINTN) GetSerialPortBase ();
+  Base   = GetSerialPortBase ();
   Offset = GetSerialPortStrideSize () * Offset;
   if (Base == 0) {
     Data = 0;
@@ -74,9 +74,9 @@ SerialPortWriteRegister (
   IN UINT8    Value
   )
 {
-  UINTN  Base;
+  UINT32  Base;
 
-  Base   = (UINTN) GetSerialPortBase ();
+  Base   = GetSerialPortBase ();
   Offset = GetSerialPortStrideSize () * Offset;
   if (Base != 0) {
     if (Base < 0x10000) {

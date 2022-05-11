@@ -14,7 +14,6 @@
 
 #define MAX_FILE_PATH_LEN          16
 #define MAX_EXTRA_IMAGE_NUM        4
-#define MAX_BOOT_OPTION_ENTRY      32
 
 #define BOOT_FLAGS_MISC            BIT0
 #define BOOT_FLAGS_CRASH_OS        BIT1
@@ -55,7 +54,6 @@ typedef enum {
   Reserved      = BIT6 | BIT7
 } RESET_CAUSE;
 
-// Define OS boot media devices
 typedef enum {
   OsBootDeviceSata,
   OsBootDeviceSd,
@@ -67,13 +65,6 @@ typedef enum {
   OsBootDeviceMemory,
   OsBootDeviceMax
 } OS_BOOT_MEDIUM_TYPE;
-
-// Define other platform devices as an extention to OS_BOOT_MEDIUM_TYPE
-typedef enum {
-  PlatformDeviceMin = OsBootDeviceMax,
-  PlatformDeviceGraphics,
-  PlatformDeviceMax
-} PLATFORM_DEVICE_TYPE;
 
 typedef enum  {
   EnumFileSystemTypeFat,

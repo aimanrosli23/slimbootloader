@@ -97,18 +97,12 @@ typedef union {
 #define SMBUS_IO_EXPANDER_INPUT_PORT1_CMD   0x1
 
 /**
-  Returns the BoardId ID of the platform from UP2 6000 GPIO pins.
-
-  @param[in]  BoardId           BoardId ID as determined through the GPIO Pins.
-**/
-VOID
-EFIAPI
-
-/**
   Returns the BoardId ID of the platform from Smbus I/O port expander PCA9555PW.
 
   @param[in]  BoardId           BoardId ID as determined through the Smbus.
 **/
+VOID
+EFIAPI
 GetBoardIdFromSmbus (
   OUT UINT16          *BoardId
   )
@@ -203,20 +197,18 @@ TccModePreMemConfig (
     FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
     InvalidateBadDso ();
   } else if (TccCfgData->TccTuning != 0) {
-    // Setup Watch dog timer
     WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
-
-    // Load TCC stream config from container
-    TccStreamBase = NULL;
-    TccStreamSize = 0;
-    Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
-                            (VOID **)&TccStreamBase, &TccStreamSize);
-    if (EFI_ERROR (Status) || (TccStreamSize < sizeof(TCC_STREAM_CONFIGURATION))) {
-      DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
-    } else {
-      FspmUpd->FspmConfig.TccStreamCfgBasePreMem = (UINT32)(UINTN)TccStreamBase;
-      FspmUpd->FspmConfig.TccStreamCfgSizePreMem = TccStreamSize;
-      DEBUG ((DEBUG_INFO, "Load TCC stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
+  // Load TCC stream config from container
+  TccStreamBase = NULL;
+  TccStreamSize = 0;
+  Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
+                          (VOID **)&TccStreamBase, &TccStreamSize);
+  if (EFI_ERROR (Status) || (TccStreamSize < sizeof(TCC_STREAM_CONFIGURATION))) {
+    DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
+  } else {
+    FspmUpd->FspmConfig.TccStreamCfgBasePreMem = (UINT32)(UINTN)TccStreamBase;
+    FspmUpd->FspmConfig.TccStreamCfgSizePreMem = TccStreamSize;
+    DEBUG ((DEBUG_INFO, "Load TCC stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
 
       StreamConfig = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
@@ -886,7 +878,6 @@ RtcInit (
 
   Bar     = MmioRead32 (MM_PCI_ADDRESS (0, PCI_DEVICE_NUMBER_PCH_PMC, PCI_FUNCTION_NUMBER_PCH_PMC, R_PMC_CFG_BASE)) & ~0x0F;
   PmConf1 = MmioRead8 (Bar + R_PMC_PWRM_GEN_PMCON_B);
-
   RtcRead (R_RTC_IO_REGA);
 
   if ((PmConf1 & B_PMC_PWRM_GEN_PMCON_B_RTC_PWR_STS) != 0) {
@@ -1172,7 +1163,6 @@ DEBUG_CODE_END();
     // Clear the DISB bit after completing DRAM Initialization Sequence
     //
     MmioAnd32 (PmcBase + R_PMC_PWRM_GEN_PMCON_A, 0);
-    UpdateMemoryInfo ();
     break;
   case PreTempRamExit:
     break;

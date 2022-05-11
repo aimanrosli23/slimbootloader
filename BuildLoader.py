@@ -2,7 +2,7 @@
 ## @ BuildLoader.py
 # Build bootloader main script
 #
-# Copyright (c) 2016 - 2022, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2016 - 2021, Intel Corporation. All rights reserved.<BR>
 #  SPDX-License-Identifier: BSD-2-Clause-Patent
 
 ##
@@ -57,9 +57,12 @@ def create_conf (workspace, sbl_source):
                 os.path.join(sbl_source, 'BaseTools/Conf/%s.template' % name),
                 os.path.join(workspace, 'Conf/%s.txt' % name))
 
-def prep_env ():
+def prep_env (toolchain_preferred = ''):
     sblsource = os.environ['SBL_SOURCE']
     os.chdir(sblsource)
+
+    # Verify toolchains first
+    verify_toolchains(toolchain_preferred)
 
     # Update Environment vars
     if os.name == 'nt':
@@ -77,6 +80,9 @@ def prep_env ():
         os.environ['SBL_KEY_DIR'] = os.path.join(sblsource, '..', 'SblKeys')
 
     create_conf (os.environ['WORKSPACE'], sblsource)
+
+    # Check if BaseTools has been compiled
+    rebuild_basetools ()
 
 def get_board_config_file (check_dir, board_cfgs):
     platform_dir = os.path.join (check_dir, 'Platform')
@@ -132,7 +138,6 @@ class BaseBoard(object):
 
         self.PCI_EXPRESS_BASE       = 0xE0000000
         self.ACPI_PM_TIMER_BASE     = 0x0408
-        self.ACPI_PROCESSOR_ID_BASE = 1
         self.USB_KB_POLLING_TIMEOUT = 1
 
         self.VERIFIED_BOOT_STAGE_1B   = 0x0
@@ -170,7 +175,7 @@ class BaseBoard(object):
         self.ENABLE_CSME_UPDATE    = 0
         self.ENABLE_EMMC_HS400     = 1
         self.ENABLE_DMA_PROTECTION = 0
-        self.ENABLE_MULTI_USB_BOOT_DEV = 1
+        self.ENABLE_MULTI_USB_BOOT_DEV = 0
         self.ENABLE_SBL_SETUP      = 0
         self.ENABLE_PAYLOD_MODULE  = 0
         self.ENABLE_FAST_BOOT      = 0
@@ -217,7 +222,7 @@ class BaseBoard(object):
         self.FWUPDATE_LOAD_BASE    = 0
 
         # OS Loader FD/FV sizes
-        self.OS_LOADER_FD_SIZE     = 0x00050000
+        self.OS_LOADER_FD_SIZE     = 0x0004E000
 
         self.OS_LOADER_FD_NUMBLK   = self.OS_LOADER_FD_SIZE // self.FLASH_BLOCK_SIZE
 
@@ -241,7 +246,6 @@ class BaseBoard(object):
         self.TOP_SWAP_SIZE         = 0
         self.REDUNDANT_SIZE        = 0
 
-        self._TOOL_CHAIN           = ''
         self._PAYLOAD_NAME         = ''
         self._FSP_PATH_NAME        = ''
         self._EXTRA_INC_PATH       = []
@@ -256,11 +260,9 @@ class BaseBoard(object):
         self.HASH_STORE_SIZE       = 0x400  #Hash store size to be allocated in bootloader
 
         self.PCI_MEM64_BASE        = 0
-        self.BUILD_ARCH            = ''
+        self.BUILD_ARCH            = 'IA32'
         self.KEYH_SVN              = 0
         self.CFGDATA_SVN           = 0
-
-        self.RTCM_RSVD_SIZE        = 0xFF000
 
         for key, value in list(kwargs.items()):
             setattr(self, '%s' % key, value)
@@ -269,12 +271,14 @@ class BaseBoard(object):
 class Build(object):
 
     def __init__(self, board):
+        self._toolchain                    = os.environ['TOOL_CHAIN']
         self._workspace                    = os.environ['WORKSPACE']
         self._board                        = board
         self._image                        = "SlimBootloader.bin"
         self._arch                         = board.BUILD_ARCH
         self._target                       = 'RELEASE' if board.RELEASE_MODE  else 'NOOPT' if board.NO_OPT_MODE else 'DEBUG'
         self._fsp_basename                 = 'FspDbg'  if board.FSPDEBUG_MODE else 'FspRel'
+        self._fv_dir                       = os.path.join(self._workspace, 'Build', 'BootloaderCorePkg', '%s_%s' % (self._target, self._toolchain), 'FV')
         self._key_dir                      = self._board._KEY_DIR
         self._img_list                     = board.GetImageLayout()
         self._pld_list                     = get_payload_list (board._PAYLOAD_NAME.split(';'))
@@ -868,7 +872,6 @@ class Build(object):
             'DOWNGRADE_PMEM64',
             'DOWNGRADE_BUS0',
             'FLAG_ALLOC_PMEM_FIRST',
-            'FLAG_ALLOC_ROM_BAR',
             'BUS_SCAN_TYPE',
             'BUS_SCAN_ITEMS'
         ]
@@ -1200,8 +1203,6 @@ class Build(object):
         ver_info_name = 'VerInfo'
         ver_bin_file = os.path.join(self._fv_dir, ver_info_name + '.bin')
         ver_txt_file = os.path.join(os.environ['PLT_SOURCE'], 'Platform', self._board.BOARD_PKG_NAME, ver_info_name + '.txt')
-        if hasattr(self._board, 'BOARD_PKG_NAME_OVERRIDE'):
-            ver_txt_file = os.path.join(os.environ['PLT_SOURCE'], 'Platform', self._board.BOARD_PKG_NAME_OVERRIDE, ver_info_name + '.txt')
 
         keys = ['VERINFO_IMAGE_ID', 'VERINFO_BUILD_DATE', 'VERINFO_PROJ_MINOR_VER',
                 'VERINFO_PROJ_MAJOR_VER', 'VERINFO_CORE_MINOR_VER', 'VERINFO_CORE_MAJOR_VER',
@@ -1218,10 +1219,7 @@ class Build(object):
 
         # create VBT file
         if self._board.HAVE_VBT_BIN:
-            if hasattr(self._board, 'BOARD_PKG_NAME_OVERRIDE'):
-                gen_vbt_file (self._board.BOARD_PKG_NAME_OVERRIDE, self._board._MULTI_VBT_FILE, os.path.join(self._fv_dir, 'Vbt.bin'))
-            else:
-                gen_vbt_file (self._board.BOARD_PKG_NAME, self._board._MULTI_VBT_FILE, os.path.join(self._fv_dir, 'Vbt.bin'))
+            gen_vbt_file (self._board.BOARD_PKG_NAME, self._board._MULTI_VBT_FILE, os.path.join(self._fv_dir, 'Vbt.bin'))
 
         # create platform include dsc file
         platform_dsc_path = os.path.join(sbl_dir, 'BootloaderCorePkg', 'Platform.dsc')
@@ -1243,8 +1241,7 @@ class Build(object):
         if self._board.CFGDATA_SIZE > 0:
             svn = self._board.CFGDATA_SVN
             # create config data files
-            board_override_name = getattr(self._board, 'BOARD_PKG_NAME_OVERRIDE', '')
-            gen_config_file (self._fv_dir, board_override_name, self._board.BOARD_PKG_NAME, self._board._PLATFORM_ID,
+            gen_config_file (self._fv_dir, self._board.BOARD_PKG_NAME, self._board._PLATFORM_ID,
                              self._board._CFGDATA_PRIVATE_KEY, self._board.CFG_DATABASE_SIZE, self._board.CFGDATA_SIZE,
                              self._board._CFGDATA_INT_FILE, self._board._CFGDATA_EXT_FILE,
                              self._board._SIGNING_SCHEME, HASH_VAL_STRING[self._board.SIGN_HASH_TYPE], svn)
@@ -1254,24 +1251,8 @@ class Build(object):
         x = subprocess.call([sys.executable, 'Build.py', self._arch.lower()],  cwd=vtf_dir)
         if x: raise Exception ('Failed to build reset vector !')
 
-    def early_build_init(self):
-        toolchain_dict = None
-        if getattr(self._board, "GetPlatformToolchainVersions", None):
-            toolchain_dict = self._board.GetPlatformToolchainVersions()
-
-        # Verify toolchains first
-        verify_toolchains(self._board._TOOL_CHAIN, toolchain_dict)
-        self._toolchain = os.environ['TOOL_CHAIN']
-        self._fv_dir = os.path.join(self._workspace, 'Build', 'BootloaderCorePkg', '%s_%s' % (self._target, self._toolchain), 'FV')
-
-        # Check if BaseTools has been compiled
-        rebuild_basetools ()
-
     def build(self):
         print("Build [%s] ..." % self._board.BOARD_NAME)
-
-        # Run early build init
-        self.early_build_init()
 
         # Run pre-build
         self.board_build_hook ('pre-build:before')
@@ -1341,13 +1322,10 @@ class Build(object):
                 os.path.join(self._fv_dir, "UCODE.bin"))
 
         # generate payload
-        board_package_name = self._board.BOARD_PKG_NAME
-        if hasattr(self._board, 'BOARD_PKG_NAME_OVERRIDE'):
-            board_package_name = self._board.BOARD_PKG_NAME_OVERRIDE
         gen_payload_bin (self._fv_dir, self._arch, self._pld_list,
                          os.path.join(self._fv_dir, "PAYLOAD.bin"),
                          self._board._CONTAINER_PRIVATE_KEY, HASH_VAL_STRING[self._board.SIGN_HASH_TYPE],
-                         self._board._SIGNING_SCHEME, board_package_name)
+                         self._board._SIGNING_SCHEME, self._board.BOARD_PKG_NAME)
 
         # create firmware update key
         if self._board.ENABLE_FWU:
@@ -1420,7 +1398,7 @@ def main():
     sp = ap.add_subparsers(help='command')
 
     def cmd_build(args):
-        prep_env ()
+        prep_env (args.toolchain)
 
         for index, name in enumerate(board_names):
             if args.board == name:
@@ -1431,7 +1409,6 @@ def main():
                                         NO_OPT_MODE       = args.noopt,       \
                                         FSPDEBUG_MODE     = args.fspdebug,    \
                                         USE_VERSION       = args.usever,      \
-                                        _TOOL_CHAIN       = args.toolchain,   \
                                         _PAYLOAD_NAME     = args.payload,     \
                                         _FSP_PATH_NAME    = args.fsppath,     \
                                         KEY_GEN           = args.keygen
@@ -1493,13 +1470,7 @@ def main():
     cleanp.set_defaults(func=cmd_clean)
 
     def cmd_build_dsc(args):
-        prep_env ()
-
-        # Verify toolchains first
-        verify_toolchains(args.toolchain)
-
-        # Check if BaseTools has been compiled
-        rebuild_basetools ()
+        prep_env (args.toolchain)
 
         # Build a specified DSC file
         def_list = []

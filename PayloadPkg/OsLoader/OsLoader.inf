@@ -77,14 +77,11 @@
   TrustyBootLib
   UsbInitLib
   UsbKbLib
-  UniversalPayloadLib
+  ElfLib
   LiteFvLib
   LinuxLib
   ContainerLib
   StringSupportLib
-  LocalApicLib
-  SynchronizationLib
-  MpServiceLib
 
 [Guids]
   gOsConfigDataGuid
@@ -93,7 +90,6 @@
   gBootLoaderVersionGuid
   gFlashMapInfoGuid
   gSeedListInfoHobGuid
-  gLoaderMpCpuTaskInfoGuid
 
 [Pcd]
   gEfiMdePkgTokenSpaceGuid.PcdPciExpressBaseAddress
@@ -114,7 +110,6 @@
   gPayloadTokenSpaceGuid.PcdGrubBootCfgEnabled
   gPlatformCommonLibTokenSpaceGuid.PcdContainerBootEnabled
   gPlatformCommonLibTokenSpaceGuid.PcdMeasuredBootHashMask
-  gPayloadTokenSpaceGuid.PcdRtcmRsvdSize
 
 [Depex]
   TRUE

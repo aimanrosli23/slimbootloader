@@ -21,7 +21,6 @@
 
 [Sources]
   MtrrLib.c
-  MtrrSync.c
 
 [Packages]
   MdePkg/MdePkg.dec

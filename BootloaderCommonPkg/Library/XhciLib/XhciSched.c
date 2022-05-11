@@ -791,7 +791,6 @@ XhcPeiExecTransfer (
   UINT8         Dci;
   BOOLEAN       Finished;
 
-
   if (CmdTransfer) {
     SlotId = 0;
     Dci    = 0;
@@ -811,7 +810,7 @@ XhcPeiExecTransfer (
 
   XhcPeiRingDoorBell (Xhc, SlotId, Dci);
 
-    for (Index = 0; Index < Loop; Index++) {
+  for (Index = 0; Index < Loop; Index++) {
     Finished = XhcPeiCheckUrbResult (Xhc, Urb);
     if (Finished) {
       break;

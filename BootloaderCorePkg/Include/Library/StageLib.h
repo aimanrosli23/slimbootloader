@@ -7,8 +7,6 @@
 
 #ifndef _STAGE_LIB_H_
 
-#include <BootloaderCoreGlobal.h>
-
 /**
   Load IDT table for current processor.
 

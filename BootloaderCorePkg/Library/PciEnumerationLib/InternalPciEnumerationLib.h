@@ -1,6 +1,6 @@
 /** @file
 
-  Copyright (c) 2017 - 2022, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2017 - 2020, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -65,18 +65,13 @@ typedef struct {
   UINT16            Io32            : 1;
   UINT16            Mem64           : 1;
   UINT16            PMem64          : 1;
-  // 0: Do not downgrade PCI devices on bus 0
-  // 1: Downgrade all PCI devices on bus 0
-  // 2: Downgrade all PCI devices on bus 0 but GFX
-  // 3: Reserved
-  UINT16            Bus0            : 2;
-  UINT16            Reserved        : 11;
+  UINT16            Bus0            : 1;
+  UINT16            Reserved        : 12;
 } PCI_RES_DOWNGRADE;
 
 typedef struct {
   UINT16            AllocPmemFirst  : 1;
-  UINT16            FlagAllocRomBar : 1;
-  UINT16            Reserved        : 14;
+  UINT16            Reserved        : 15;
 } PCI_ENUM_FLAG;
 
 typedef struct {

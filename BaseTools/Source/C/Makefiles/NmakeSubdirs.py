@@ -45,10 +45,7 @@ def RunCommand(WorkDir=None, *Args, **kwargs):
 
     output_lock.acquire(True)
     print("execute command \"{0}\" in directory {1}".format(" ".join(Args), WorkDir))
-    try:
-        print(message)
-    except:
-        pass
+    print(message)
     output_lock.release()
 
     return p.returncode, stdout

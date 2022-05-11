@@ -60,7 +60,6 @@ class Board(BaseBoard):
         self.ENABLE_GRUB_CONFIG       = 1
         self.ENABLE_LINUX_PAYLOAD     = 1
         self.ENABLE_CRYPTO_SHA_OPT    = 0
-        self.ENABLE_SMBIOS            = 1
 
         # 0: Disable  1: Enable  2: Auto (disable for UEFI payload, enable for others)
         self.ENABLE_SMM_REBASE        = 2
@@ -187,12 +186,6 @@ class Board(BaseBoard):
         #   VbtBin folder.
         self._MULTI_VBT_FILE      = {1:'Vbt800x600.dat', 2:'Vbt1024x768.dat'}
 
-    def GetPlatformToolchainVersions(self):
-        version_dict = {
-            'iasl'      : '20160318',
-        }
-        return version_dict
-
     def PlatformBuildHook (self, build, phase):
         if phase == 'post-build:before':
           # Create PTEST.bin
@@ -277,12 +270,6 @@ class Board(BaseBoard):
           ])
 
         return container_list
-
-    def GetOutputImages (self):
-        # define extra images that will be copied to output folder
-        img_list = ['CfgDataStitch.py',
-                    'CfgDataDef.yaml']
-        return img_list
 
     def GetImageLayout (self):
 

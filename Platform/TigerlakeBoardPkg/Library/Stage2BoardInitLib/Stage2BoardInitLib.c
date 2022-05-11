@@ -1,6 +1,6 @@
 /** @file
 
-  Copyright (c) 2008 - 2022, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2008 - 2021, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
@@ -80,14 +80,23 @@
 #include <TccConfigSubRegions.h>
 #include <Library/LocalApicLib.h>
 #include <Library/TccLib.h>
-#include <Library/WatchDogTimerLib.h>
 #include "Dts.h"
-#include "SerialIo.h"
-#include <Library/PciePm.h>
-#include <Library/PlatformInfo.h>
-#include <Library/PlatformHookLib.h>
 
-
+// GPIO group table to convert from alphabet group index to pad group ID
+CONST UINT8 mPchGpioGroup[2][26] = {
+  { // PCH-LP
+    /*A     B     C     D     E     F     G     H     I     J     K     L     M      */
+    0x02, 0x00, 0x0B, 0x08, 0x0E, 0x0C, 0xFF, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    /*N     O     P     Q     R     S     T     U     V     W     X     Y     Z(GPD) */
+    0xFF, 0xFF, 0xFF, 0xFF, 0x03, 0x06, 0x01, 0x09, 0xFF, 0xFF, 0xFF, 0xFF, 0x05
+  },
+  { // PCH-H
+    /*A     B     C     D     E     F     G     H     I     J     K     L     M      */
+    0x00, 0x02, 0x05, 0x04, 0x0A, 0x0B, 0x07, 0x0D, 0x10, 0x0E, 0x0F, 0xFF, 0xFF,
+    /*N     O     P     Q     R     S     T     U     V     W     X     Y     Z(GPD) */
+    0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x06, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x09,
+  }
+};
 
 BOOLEAN mTccDsoTuning      = FALSE;
 UINT8   mTccRtd3Support    = 0;
@@ -317,6 +326,16 @@ CONST EFI_ACPI_COMMON_HEADER *mPlatformAcpiTables[] = {
   (EFI_ACPI_COMMON_HEADER *)&mAcpiTccRtctTableTemplate,
   NULL
 };
+
+UINT8
+GetSerialPortStrideSize (
+  VOID
+);
+
+UINT32
+GetSerialPortBase (
+  VOID
+  );
 
 VOID
 EnableLegacyRegions (
@@ -704,6 +723,44 @@ ClearSmi (
 }
 
 /**
+  Convert GPIO group and pin number into GPIO pad.
+
+  @param[in]  Group         Alphabet based GPIO group index.
+  @param[in]  Pin           GPIO pin number.
+
+  @retval                   GPIO pad
+**/
+UINT32
+GpioGroupPinToPad (
+  IN UINT32     Group,
+  IN UINT32     Pin
+  )
+{
+  UINT8    GroupId;
+  UINT32   GpioPad;
+  UINT32   Index;
+
+  if ((Group >= sizeof(mPchGpioGroup[0])) || (Pin >= 24)) {
+    return 0;
+  }
+
+  if (IsPchLp ()) {
+    Index   = 0;
+    GpioPad = GPIO_VER2_LP_GPP_B0;
+  } else {
+    Index   = 1;
+    GpioPad = GPIO_VER2_H_GPP_A0;
+  }
+  GroupId  = mPchGpioGroup[Index][Group];
+  if (GroupId == 0xFF) {
+    return 0;
+  }
+
+  GpioPad += ((GroupId << 16) + Pin);
+  return GpioPad;
+}
+
+/**
   Update current boot Payload ID.
 
 **/
@@ -716,7 +773,7 @@ UpdatePayloadId (
   UINT32             PayloadSelGpioData;
   UINT32             PayloadSelGpioPad;
   GEN_CFG_DATA      *GenCfgData;
-  PLDSEL_CFG_DATA   *PldSelCfgData;
+  PLATFORM_CFG_DATA *PlatCfgData;
 
   GenCfgData = (GEN_CFG_DATA *)FindConfigDataByTag (CDATA_GEN_TAG);
   if (GenCfgData == NULL) {
@@ -727,9 +784,9 @@ UpdatePayloadId (
     return;
   }
 
-  PldSelCfgData = (PLDSEL_CFG_DATA *)FindConfigDataByTag (CDATA_PLDSEL_TAG);
-  if ((PldSelCfgData != NULL) && (PldSelCfgData->PldSelGpio.Enable != 0)) {
-    PayloadSelGpioPad = GpioGroupPinToPad (PldSelCfgData->PldSelGpio.PadGroup,  PldSelCfgData->PldSelGpio.PinNumber);
+  PlatCfgData = (PLATFORM_CFG_DATA *)FindConfigDataByTag (CDATA_PLATFORM_TAG);
+  if ((PlatCfgData != NULL) && (PlatCfgData->PayloadSelGpio.Enable != 0)) {
+    PayloadSelGpioPad = GpioGroupPinToPad (PlatCfgData->PayloadSelGpio.PinGroup,  PlatCfgData->PayloadSelGpio.PinNumber);
     if (PayloadSelGpioPad == 0) {
       Status = EFI_ABORTED;
     } else {
@@ -738,12 +795,12 @@ UpdatePayloadId (
     }
 
     if (!EFI_ERROR (Status)) {
-      if (PayloadSelGpioData != PldSelCfgData->PldSelGpio.PinPolarity) {
-        SetPayloadId (UEFI_PAYLOAD_ID_SIGNATURE);
-        DEBUG ((DEBUG_INFO, "Update PayloadId to UEFI\n"));
-      } else {
+      if (PayloadSelGpioData == 1) {
         SetPayloadId (0);
         DEBUG ((DEBUG_INFO, "Update PayloadId to OS Loader\n"));
+      } else {
+        SetPayloadId (UEFI_PAYLOAD_ID_SIGNATURE);
+        DEBUG ((DEBUG_INFO, "Update PayloadId to UEFI\n"));
       }
     } else {
       DEBUG ((DEBUG_ERROR, "Invalid GPIO pin for Payload Select\n"));
@@ -905,9 +962,6 @@ BoardInit (
     Status = PcdSet32S (PcdAcpiTableTemplatePtr, (UINT32)(UINTN)mPlatformAcpiTables);
     break;
   case PostSiliconInit:
-    if (IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
-      WdtDisable (WDT_FLAG_TCC_DSO_IN_PROGRESS);
-    }
     // Set TSEG base/size PCD
     TsegBase = MmioRead32 (TO_MM_PCI_ADDRESS (0x00000000) + R_SA_TSEGMB) & ~0xF;
     TsegSize = MmioRead32 (TO_MM_PCI_ADDRESS (0x00000000) + R_SA_BGSM) & ~0xF;
@@ -923,12 +977,10 @@ BoardInit (
       }
       if (FspGfxHob != NULL) {
         DEBUG ((DEBUG_INFO, "FspGfxHob->FrameBufferBase = 0x%lx\n", FspGfxHob->FrameBufferBase));
-        PciWrite32 (PCI_LIB_ADDRESS(SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, 0x1C), \
-                   (UINT32)RShiftU64 (FspGfxHob->FrameBufferBase, 32));
-        PciWrite32 (PCI_LIB_ADDRESS(SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, 0x18), \
-                   (UINT32)FspGfxHob->FrameBufferBase);
         PciWrite8 (PCI_LIB_ADDRESS(SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, PCI_COMMAND_OFFSET), \
                    EFI_PCI_COMMAND_MEMORY_SPACE | EFI_PCI_COMMAND_BUS_MASTER);
+        PciWrite32 (PCI_LIB_ADDRESS(SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, 0x18), \
+                   (UINT32)FspGfxHob->FrameBufferBase);
       } else {
         DEBUG ((DEBUG_ERROR, "FspGfxHob is not available\n"));
       }
@@ -951,13 +1003,6 @@ BoardInit (
     }
     break;
   case PostPciEnumeration:
-    if (FeaturePcdGet (PcdEnablePciePm)) {
-      PciePmConfig ();
-    }
-    Status = SetFrameBufferWriteCombining (0, MAX_UINT32);
-    if (EFI_ERROR(Status)) {
-      DEBUG ((DEBUG_INFO, "Failed to set GFX framebuffer as WC\n"));
-    }
     if (GetBootMode() == BOOT_ON_S3_RESUME) {
       ClearSmi ();
       RestoreS3RegInfo (FindS3Info (S3_SAVE_REG_COMM_ID));
@@ -1131,7 +1176,7 @@ FspUpdatePcieRpPolicy (
 /**
   Update FSP-S UPD config data for TCC mode and tuning
 
-  @param  FspsUpd            The pointer to the FSP-S UPD to be updated.
+  @param  FspmUpd            The pointer to the FSP-S UPD to be updated.
 
   @retval EFI_NOT_FOUND                 Platform Features or Tcc mode not found
           EFI_ERROR                     Error trying to load sub-region
@@ -1196,29 +1241,20 @@ TccModePostMemConfig (
   FspsUpd->FspsConfig.TccErrorLogEn   = TccCfgData->TccErrorLog;
   FspsUpd->FspsConfig.IfuEnable       = 0;
 
-  if (!IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
-    //
-    // If FSPM doesn't enable TCC DSO timer, FSPS should also skip TCC DSO.
-    //
-    DEBUG ((DEBUG_INFO, "DSO Tuning skipped.\n"));
-    FspsUpd->FspsConfig.TccStreamCfgStatus = 1;
-  } else if (TccCfgData->TccTuning != 0) {
-    // Reload Watch dog timer
-    WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
-
-    // Load TCC stream config from container
-    TccStreamBase = NULL;
-    TccStreamSize = 0;
-    Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
+  // Load TCC stream config from container
+  TccStreamBase = NULL;
+  TccStreamSize = 0;
+  Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
                           (VOID **)&TccStreamBase, &TccStreamSize);
-    if (EFI_ERROR (Status) || (TccStreamSize < sizeof (TCC_STREAM_CONFIGURATION))) {
-      DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
-    } else {
-      FspsUpd->FspsConfig.TccStreamCfgBase = (UINT32)(UINTN)TccStreamBase;
-      FspsUpd->FspsConfig.TccStreamCfgSize = TccStreamSize;
-      DEBUG ((DEBUG_INFO, "Load tcc stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
+  if (EFI_ERROR (Status) || (TccStreamSize < sizeof (TCC_STREAM_CONFIGURATION))) {
+    DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
+  } else {
+    FspsUpd->FspsConfig.TccStreamCfgBase = (UINT32)(UINTN)TccStreamBase;
+    FspsUpd->FspsConfig.TccStreamCfgSize = TccStreamSize;
+    DEBUG ((DEBUG_INFO, "Load tcc stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
 
-      // Update UPD from stream
+    // Update UPD from stream
+    if (TccCfgData->TccTuning != 0) {
       StreamConfig   = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
       FspsUpd->FspsConfig.Eist                       = PolicyConfig->Pstates;
@@ -1293,6 +1329,7 @@ UpdateFspConfig (
   EFI_STATUS          Status;
   FLASH_REGION_TYPE   RegionType;
   FSPS_UPD            *FspsUpd;
+  SECURITY_CFG_DATA   *SecCfgData;
   SILICON_CFG_DATA    *SiCfgData;
   FSP_S_CONFIG        *FspsConfig;
   UINT8               Index;
@@ -1305,17 +1342,31 @@ UpdateFspConfig (
   UINT32              VarSize;
   TSN_MAC_ADDR_SUB_REGION *TsnSubRegion;
   UINT8                MaxPcieRootPorts;
+  UINT8               DebugPort;
   UINT32              *HdaVerbTablePtr;
   UINT8                HdaVerbTableNum;
   FspsUpd    = (FSPS_UPD *)FspsUpdPtr;
   FspsConfig = &FspsUpd->FspsConfig;
 
-  // SGX is not supported on this platform. Do not change these two lines.
-  FspsConfig->SgxEpoch0           = 0x553DFD8D5FA48F27;
-  FspsConfig->SgxEpoch1           = 0xD76767B9BE4BFDC1;
+  SecCfgData = (SECURITY_CFG_DATA *)FindConfigDataByTag (CDATA_SECURITY_TAG);
+  if (SecCfgData != NULL) {
+    DEBUG ((DEBUG_INFO, "Load Security Cfg Data\n"));
+    // Configure Sgx SPD Data
+    FspsConfig->SgxEpoch0           = SecCfgData->SgxEpoch0;
+    FspsConfig->SgxEpoch1           = SecCfgData->SgxEpoch1;
+  } else {
+    DEBUG ((DEBUG_INFO, "Failed to find security CFG!\n"));
+  }
 
-  // Update serial io
-  SerialIoPostMemConfig (FspsConfig);
+  DebugPort = GetDebugPort ();
+  if (DebugPort < PCH_MAX_SERIALIO_UART_CONTROLLERS) {
+    // Inform FSP to skip debug UART init
+    FspsConfig->SerialIoDebugUartNumber = DebugPort;
+    FspsConfig->SerialIoUartMode[DebugPort] = 0x4;
+    if (S0IX_STATUS() == 1) {
+      FspsConfig->SerialIoUartMode[DebugPort] = 1;    // Force UART to PCI mode to enable OS to have full control
+    }
+  }
 
   //
   // Update device interrupt table
@@ -1372,20 +1423,21 @@ UpdateFspConfig (
       if (RegionType < FlashRegionMax) {
         if (RegionType != FlashRegionBios) {
           Status = GetComponentInfo (FLASH_MAP_SIG_SPI_IAS1, &SpiIasBase, NULL);
+          if (EFI_ERROR (Status)) {
+            return;
+          }
+          SpiIasBase &= 0xFFFF;
+          Status = SpiGetRegionAddress (RegionType, &BaseAddress, &TotalSize);
           if (!EFI_ERROR (Status)) {
-            SpiIasBase &= 0xFFFF;
-            Status = SpiGetRegionAddress (RegionType, &BaseAddress, &TotalSize);
-            if (!EFI_ERROR (Status)) {
-              if ((PcdGet32 (PcdSpiIasImage1RegionSize) + PcdGet32 (PcdSpiIasImage2RegionSize)) <= TotalSize) {
-                IasProtected = TRUE;
-                FspsConfig->PchWriteProtectionEnable[PrIndex] = TRUE;
-                FspsConfig->PchReadProtectionEnable[PrIndex]  = FALSE;
-                FspsConfig->PchProtectedRangeBase[PrIndex]    = (UINT16) ((BaseAddress + SpiIasBase) >> 12);
-                FspsConfig->PchProtectedRangeLimit[PrIndex]   = (UINT16) ((BaseAddress + SpiIasBase +
-                                                            PcdGet32 (PcdSpiIasImage1RegionSize) +
-                                                            PcdGet32 (PcdSpiIasImage2RegionSize) - 1) >> 12);
-                PrIndex++;
-              }
+            if ((PcdGet32 (PcdSpiIasImage1RegionSize) + PcdGet32 (PcdSpiIasImage2RegionSize)) <= TotalSize) {
+              IasProtected = TRUE;
+              FspsConfig->PchWriteProtectionEnable[PrIndex] = TRUE;
+              FspsConfig->PchReadProtectionEnable[PrIndex]  = FALSE;
+              FspsConfig->PchProtectedRangeBase[PrIndex]    = (UINT16) ((BaseAddress + SpiIasBase) >> 12);
+              FspsConfig->PchProtectedRangeLimit[PrIndex]   = (UINT16) ((BaseAddress + SpiIasBase +
+                                                          PcdGet32 (PcdSpiIasImage1RegionSize) +
+                                                          PcdGet32 (PcdSpiIasImage2RegionSize) - 1) >> 12);
+              PrIndex++;
             }
           }
         } else {
@@ -1610,7 +1662,6 @@ UpdateFspConfig (
   FspsConfig->UsbTcPortEn = 0xf;
 
   if (SiCfgData != NULL) {
-    FspsConfig->EnableTcoTimer   = SiCfgData->EnableTcoTimer;
     FspsConfig->EnableTimedGpio0 = SiCfgData->EnableTimedGpio0;
     FspsConfig->EnableTimedGpio1 = SiCfgData->EnableTimedGpio1;
     FspsConfig->XdciEnable       = SiCfgData->XdciEnable;
@@ -1663,14 +1714,14 @@ UpdateFspConfig (
 
     // PCH SERIAL_UART_CONFIG
     for (Index = 0; Index < GetPchMaxSerialIoUartControllersNum (); Index++) {
+      FspsConfig->SerialIoUartParity[Index]          = 1;
+      FspsConfig->SerialIoUartDataBits[Index]        = 0x8;
+      FspsConfig->SerialIoUartStopBits[Index]        = 1;
+      FspsConfig->SerialIoUartAutoFlow[Index]        = 1;
       FspsConfig->SerialIoUartPowerGating[Index]     = 2;
       FspsConfig->SerialIoUartDmaEnable[Index]       = 1;
       FspsConfig->SerialIoUartDbg2[Index]            = 0;
     }
-  }
-
-  if (FeaturePcdGet (PcdEnablePciePm)) {
-    StoreRpConfig (FspsConfig);
   }
 }
 
@@ -1842,12 +1893,8 @@ UpdateFrameBufferInfo (
   OUT  EFI_PEI_GRAPHICS_INFO_HOB   *GfxInfo
 )
 {
-  UINT64  GfxBar;
-
   if (PcdGetBool (PcdIntelGfxEnabled)) {
-    GfxBar  = LShiftU64 (PciRead32 (PCI_LIB_ADDRESS (SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, 0x1C)), 32);
-    GfxBar += (PciRead32 (PCI_LIB_ADDRESS (SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, 0x18)) & 0xFFFFFF00);
-    GfxInfo->FrameBufferBase = (PHYSICAL_ADDRESS) GfxBar;
+    GfxInfo->FrameBufferBase = PciRead32 (PCI_LIB_ADDRESS (SA_IGD_BUS, SA_IGD_DEV, SA_IGD_FUN_0, 0x18)) & 0xFFFFFF00;
   }
 }
 
@@ -1927,8 +1974,7 @@ UpdateSerialPortInfo (
   IN  SERIAL_PORT_INFO  *SerialPortInfo
 )
 {
-  SerialPortInfo->BaseAddr64 = GetSerialPortBase ();
-  SerialPortInfo->BaseAddr   = (UINT32) SerialPortInfo->BaseAddr64;
+  SerialPortInfo->BaseAddr = GetSerialPortBase();
   SerialPortInfo->RegWidth = GetSerialPortStrideSize();
   if (GetDebugPort () >= PCH_MAX_SERIALIO_UART_CONTROLLERS) {
     // IO Type
@@ -2961,8 +3007,8 @@ PlatformUpdateAcpiGnvs (
 
 
   // System Agent
-  SaNvs->Mmio64Base               = PcdGet64(PcdPciResourceMem64Base);
-  SaNvs->Mmio64Length             = 0x4000000000ULL;
+  SaNvs->Mmio64Base               = 0;
+  SaNvs->Mmio64Length             = 0;
   SaNvs->Mmio32Base               = PcdGet32(PcdPciResourceMem32Base);
   SaNvs->Mmio32Length             = ACPI_MMIO_BASE_ADDRESS - SaNvs->Mmio32Base;
   SaNvs->XPcieCfgBaseAddress      = (UINT32)(PcdGet64(PcdPciExpressBaseAddress));
@@ -3028,4 +3074,3 @@ PlatformUpdateAcpiGnvs (
     PlatformNvs->Rtd3Support     = mTccRtd3Support;
   }
 }
-

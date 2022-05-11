@@ -169,12 +169,13 @@ XhcPeiWaitOpRegBit (
   IN UINT32             Timeout
   )
 {
-  UINT64 Index;
+  UINT64                Index;
 
   for (Index = 0; Index < Timeout * XHC_1_MILLISECOND; Index++) {
     if (XHC_REG_BIT_IS_SET (Xhc, Offset, Bit) == WaitToSet) {
       return EFI_SUCCESS;
     }
+
     MicroSecondDelay (XHC_1_MICROSECOND);
   }
 
@@ -717,7 +718,7 @@ XhcPeiControlTransfer (
         // Don't support multi-TT feature for super speed hub now.
         //
         MTT = 0;
-        DEBUG ((DEBUG_INFO, "XHCI: Don't support multi-TT feature for Hub now. (force to disable MTT)\n"));
+        DEBUG ((DEBUG_ERROR, "XHCI: Don't support multi-TT feature for Hub now. (force to disable MTT)\n"));
       } else {
         MTT = 0;
       }

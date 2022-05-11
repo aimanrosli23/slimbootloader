@@ -1,6 +1,6 @@
 ## @file
 #
-#  Copyright (c) 2016 - 2021, Intel Corporation. All rights reserved.<BR>
+#  Copyright (c) 2016 - 2020, Intel Corporation. All rights reserved.<BR>
 #
 #  SPDX-License-Identifier: BSD-2-Clause-Patent
 #
@@ -23,7 +23,6 @@
 [Sources]
   Stage2.h
   Stage2.c
-  Stage2Hob.c
   Stage2Support.c
 
 [Packages]
@@ -69,7 +68,6 @@
   StageLib
   ThunkLib
   LocalApicLib
-  UniversalPayloadLib
 
 [Guids]
   gFspReservedMemoryResourceHobGuid
@@ -93,16 +91,6 @@
   gDeviceTableHobGuid
   gSmmInformationGuid
   gLoaderMpCpuTaskInfoGuid
-  gUniversalPayloadPciRootBridgeInfoGuid
-  gUniversalPayloadAcpiTableGuid
-  gUniversalPayloadSmbiosTableGuid
-  gUniversalPayloadSerialPortInfoGuid
-  gUniversalPayloadExtraDataGuid
-  gPldSmmRegisterInfoGuid
-  gEfiSmmSmramMemoryGuid
-  gSpiFlashInfoGuid
-  gNvVariableInfoGuid
-  gPldS3CommunicationGuid
 
 [Pcd]
   gPlatformCommonLibTokenSpaceGuid.PcdMaxLibraryDataEntry
@@ -143,7 +131,6 @@
   gPlatformModuleTokenSpaceGuid.PcdLinuxPayloadEnabled
   gPlatformCommonLibTokenSpaceGuid.PcdMeasuredBootHashMask
   gPlatformModuleTokenSpaceGuid.PcdSmmRebaseMode
-  gPlatformModuleTokenSpaceGuid.PcdAcpiTablesRsdp
-  gPlatformCommonLibTokenSpaceGuid.PcdBuildSmmHobs
+
 [Depex]
   TRUE

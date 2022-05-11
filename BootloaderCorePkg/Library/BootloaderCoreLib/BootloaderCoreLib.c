@@ -1,6 +1,6 @@
 /** @file
 
-  Copyright (c) 2016 - 2021, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2016 - 2017, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -10,8 +10,8 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
 #include <Library/HobLib.h>
+#include <Library/BootloaderCoreLib.h>
 #include <Guid/FlashMapInfoGuid.h>
-#include <BootloaderCoreGlobal.h>
 
 /**
   This function retrieves current boot mode.
@@ -283,35 +283,6 @@ GetPlatformBomId (
   return GetLoaderGlobalDataPointer()->PlatformBomId;
 }
 
-/**
-  This function sets current SOC SKU info.
-
-  @param Sku    The value of current SOC SKU.
-
-**/
-VOID
-EFIAPI
-SetSocSku (
-  IN UINT32 Sku
-  )
-{
-  GetLoaderGlobalDataPointer()->SocSku = Sku;
-}
-
-/**
-  This function retrieves current SOC SKU info.
-
-  @retval    The current SOC SKU.
-
-**/
-UINT32
-EFIAPI
-GetSocSku (
-  VOID
-  )
-{
-  return GetLoaderGlobalDataPointer()->SocSku;
-}
 
 /**
   This function sets current debug port index.
@@ -344,37 +315,6 @@ GetDebugPort (
   return GetLoaderGlobalDataPointer()->DebugPortIdx;
 }
 
-
-/**
-  Returns the debug print error level mask for the current module.
-
-  @return  Debug print error level mask for the current module.
-
-**/
-UINT32
-EFIAPI
-GetDebugErrorLevel (
-  VOID
-  )
-{
-  return ((LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer())->DebugPrintErrorLevel;
-}
-
-
-/**
-  Sets the global debug print error level mask fpr the entire platform.
-
-  @param   ErrorLevel     Global debug print error level.
-
-**/
-VOID
-EFIAPI
-SetDebugErrorLevel (
-  UINT32  ErrorLevel
-  )
-{
-  ((LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer())->DebugPrintErrorLevel = ErrorLevel;
-}
 
 /**
   This function sets current platform BOM id.
@@ -454,50 +394,18 @@ GetDmaBufferPtr (
 }
 
 /**
-  This function retrieves system memory info the given type.
+  This function retrieves usable memory top.
 
-  @param[in] MemInfoType   Memory info type to retrieve.
-
-  @retval    Value of the required memory info type.
-             It returns 0 if the required type is invalid.
+  @retval    Usable memory top.
 
 **/
-UINT64
+UINT32
 EFIAPI
-GetMemoryInfo (
-  IN  MEM_INFO_TYPE   MemInfoType
+GetUsableMemoryTop (
+  VOID
   )
 {
-  LOADER_GLOBAL_DATA  *LdrGlobal;
-
-  LdrGlobal = GetLoaderGlobalDataPointer();
-  if ((LdrGlobal != NULL) && (MemInfoType < EnumMemInfoMax)) {
-    return LdrGlobal->MemoryInfo[MemInfoType];
-  } else {
-    return 0;
-  }
-}
-
-/**
-  This function sets system memory info for the given type.
-
-  @param[in] MemInfoType   Memory info type to retrieve.
-  @param[in] Value         The value to set.
-
-**/
-VOID
-EFIAPI
-SetMemoryInfo (
-  IN  MEM_INFO_TYPE   MemInfoType,
-  IN  UINT64          Value
-  )
-{
-  LOADER_GLOBAL_DATA  *LdrGlobal;
-
-  LdrGlobal = GetLoaderGlobalDataPointer();
-  if ((LdrGlobal != NULL) && (MemInfoType < EnumMemInfoMax)) {
-    LdrGlobal->MemoryInfo[MemInfoType] = Value;
-  }
+  return GetLoaderGlobalDataPointer()->MemUsableTop;
 }
 
 /**

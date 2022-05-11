@@ -23,7 +23,6 @@
 #include <Library/MpInitLib.h>
 #include <Library/FirmwareUpdateLib.h>
 #include <Guid/BootLoaderVersionGuid.h>
-#include <BootloaderCoreGlobal.h>
 #include "AcpiInitLibInternal.h"
 
 STATIC
@@ -186,6 +185,7 @@ AcpiTableUpdate (
   UINT32                            Size;
   UINT32                            EntryNum;
   EFI_STATUS                        Status;
+  LOADER_GLOBAL_DATA               *LdrGlobal;
   S3_DATA                          *S3Data;
   UINT32                            AcpiMax;
 
@@ -199,7 +199,9 @@ AcpiTableUpdate (
   RsdtEntry = (UINT32 *) ((UINT8 *)Rsdt + sizeof (EFI_ACPI_DESCRIPTION_HEADER));
   XsdtEntry = (UINT64 *) ((UINT8 *)Xsdt + sizeof (EFI_ACPI_DESCRIPTION_HEADER));
   EntryNum  = (Rsdt->Length - sizeof (EFI_ACPI_DESCRIPTION_HEADER)) / sizeof (UINT32);
-  S3Data    = (S3_DATA *) GetS3DataPtr();
+
+  LdrGlobal = (LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer();
+  S3Data    = (S3_DATA *)LdrGlobal->S3DataPtr;
   Current   = (UINT8 *)(UINTN)S3Data->AcpiTop;
   AcpiMax   = S3Data->AcpiBase + PcdGet32 (PcdLoaderAcpiReclaimSize);
 
@@ -371,7 +373,7 @@ UpdateMadt (
     for (Index = 0; Index < SysCpuInfo->CpuCount; Index++) {
       LocalX2Apic[Index].Type             = EFI_ACPI_5_0_PROCESSOR_LOCAL_X2APIC;
       LocalX2Apic[Index].Length           = sizeof (EFI_ACPI_5_0_PROCESSOR_LOCAL_X2APIC_STRUCTURE);
-      LocalX2Apic[Index].AcpiProcessorUid = Index + PcdGet32 (PcdAcpiProcessorIdBase);
+      LocalX2Apic[Index].AcpiProcessorUid = Index + 1;
       LocalX2Apic[Index].X2ApicId         = SysCpuInfo->CpuInfo[Index].ApicId;
       LocalX2Apic[Index].Flags            = 1;
     }
@@ -382,7 +384,7 @@ UpdateMadt (
     for (Index = 0; Index < SysCpuInfo->CpuCount; Index++) {
       LocalApic[Index].Type             = EFI_ACPI_5_0_PROCESSOR_LOCAL_APIC;
       LocalApic[Index].Length           = sizeof (EFI_ACPI_5_0_PROCESSOR_LOCAL_APIC_STRUCTURE);
-      LocalApic[Index].AcpiProcessorId  = (UINT8)(Index + PcdGet32 (PcdAcpiProcessorIdBase));
+      LocalApic[Index].AcpiProcessorId  = (UINT8)Index + 1;
       LocalApic[Index].ApicId           = (UINT8)SysCpuInfo->CpuInfo[Index].ApicId;
       LocalApic[Index].Flags            = 1;
     }
@@ -641,7 +643,7 @@ AcpiInit (
       if (!EFI_ERROR(Status)) {
         if (UpdateRdstXsdt == 1) {
           Signature = Table->Signature;
-          DEBUG ((DEBUG_INFO, "Publish ACPI table: %a @ 0x%08X\n", &Signature, (UINT32)(UINTN)Current));
+          DEBUG ((DEBUG_INFO, "Publish ACPI table: %a\n", &Signature));
           RsdtEntry[XsdtIndex]   = (UINT32) (UINTN)Current;
           XsdtEntry[XsdtIndex++] = (UINT64) (UINTN)Current;
         }

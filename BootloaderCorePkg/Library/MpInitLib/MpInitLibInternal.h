@@ -20,12 +20,10 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/BootloaderCommonLib.h>
 #include <Library/MpInitLib.h>
-#include <Library/MtrrLib.h>
 #include <Library/ExtraBaseLib.h>
 #include <Library/BootloaderCoreLib.h>
 #include <Library/S3SaveRestoreLib.h>
 #include <Register/Intel/ArchitecturalMsr.h>
-#include <Guid/SmmS3CommunicationInfoGuid.h>
 
 #define   AP_BUFFER_ADDRESS        0x38000
 #define   AP_BUFFER_SIZE           0x8000

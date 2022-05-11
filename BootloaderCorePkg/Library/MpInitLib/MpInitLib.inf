@@ -47,7 +47,6 @@
   SynchronizationLib
   SortLib
   ExtraBaseLib
-  MtrrLib
 
 [Guids]
 
@@ -61,4 +60,3 @@
   gPlatformModuleTokenSpaceGuid.PcdSmmRebaseMode
   gPlatformModuleTokenSpaceGuid.PcdFuncCpuInitHook
   gPlatformCommonLibTokenSpaceGuid.PcdCpuX2ApicEnabled
-  gPlatformCommonLibTokenSpaceGuid.PcdBuildSmmHobs

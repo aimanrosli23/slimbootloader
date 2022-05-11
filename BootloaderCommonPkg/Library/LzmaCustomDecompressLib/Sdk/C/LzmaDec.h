@@ -1,36 +1,28 @@
 /* LzmaDec.h -- LZMA Decoder
-2018-04-21 : Igor Pavlov : Public domain */
+2008-10-04 : Igor Pavlov : Public domain */
 
-#ifndef __LZMA_DEC_H
-#define __LZMA_DEC_H
+#ifndef __LZMADEC_H
+#define __LZMADEC_H
 
-#include "7zTypes.h"
-
-EXTERN_C_BEGIN
+#include "Types.h"
 
 /* #define _LZMA_PROB32 */
 /* _LZMA_PROB32 can increase the speed on some CPUs,
    but memory usage for CLzmaDec::probs will be doubled in that case */
 
-typedef
 #ifdef _LZMA_PROB32
-  UInt32
+#define CLzmaProb UInt32
 #else
-  UInt16
+#define CLzmaProb UInt16
 #endif
-  CLzmaProb;
 
 
 /* ---------- LZMA Properties ---------- */
 
 #define LZMA_PROPS_SIZE 5
 
-typedef struct _CLzmaProps
-{
-  Byte lc;
-  Byte lp;
-  Byte pb;
-  Byte _pad_;
+typedef struct _CLzmaProps {
+  unsigned lc, lp, pb;
   UInt32 dicSize;
 } CLzmaProps;
 
@@ -40,7 +32,7 @@ Returns:
   SZ_ERROR_UNSUPPORTED - Unsupported properties
 */
 
-SRes LzmaProps_Decode(CLzmaProps *p, const Byte *data, unsigned size);
+SRes LzmaProps_Decode (CLzmaProps *p, const Byte *data, unsigned size);
 
 
 /* ---------- LZMA Decoder state ---------- */
@@ -50,39 +42,35 @@ SRes LzmaProps_Decode(CLzmaProps *p, const Byte *data, unsigned size);
 
 #define LZMA_REQUIRED_INPUT_MAX 20
 
-typedef struct
-{
-  /* Don't change this structure. ASM code can use it. */
+typedef struct {
   CLzmaProps prop;
   CLzmaProb *probs;
-  CLzmaProb *probs_1664;
   Byte *dic;
-  SizeT dicBufSize;
-  SizeT dicPos;
   const Byte *buf;
-  UInt32 range;
-  UInt32 code;
+  UInt32 range, code;
+  SizeT dicPos;
+  SizeT dicBufSize;
   UInt32 processedPos;
   UInt32 checkDicSize;
+  unsigned state;
   UInt32 reps[4];
-  UInt32 state;
-  UInt32 remainLen;
-
+  unsigned remainLen;
+  int needFlush;
+  int needInitState;
   UInt32 numProbs;
   unsigned tempBufSize;
   Byte tempBuf[LZMA_REQUIRED_INPUT_MAX];
 } CLzmaDec;
 
-#define LzmaDec_Construct(p) { (p)->dic = NULL; (p)->probs = NULL; }
+#define LzmaDec_Construct(p) { (p)->dic = 0; (p)->probs = 0; }
 
-void LzmaDec_Init(CLzmaDec *p);
+void LzmaDec_Init (CLzmaDec *p);
 
 /* There are two types of LZMA streams:
-     - Stream with end mark. That end mark adds about 6 bytes to compressed size.
-     - Stream without end mark. You must know exact uncompressed size to decompress such stream. */
+     0) Stream with end mark. That end mark adds about 6 bytes to compressed size.
+     1) Stream without end mark. You must know exact uncompressed size to decompress such stream. */
 
-typedef enum
-{
+typedef enum {
   LZMA_FINISH_ANY,   /* finish at any point */
   LZMA_FINISH_END    /* block must be finished at the end */
 } ELzmaFinishMode;
@@ -102,8 +90,7 @@ typedef enum
      3) Check that output(srcLen) = compressedSize, if you know real compressedSize.
         You must use correct finish mode in that case. */
 
-typedef enum
-{
+typedef enum {
   LZMA_STATUS_NOT_SPECIFIED,               /* use main error code instead */
   LZMA_STATUS_FINISHED_WITH_MARK,          /* stream was finished with end mark. */
   LZMA_STATUS_NOT_FINISHED,                /* stream was not finished */
@@ -136,11 +123,11 @@ LzmaDec_Allocate* can return:
   SZ_ERROR_UNSUPPORTED - Unsupported properties
 */
 
-SRes LzmaDec_AllocateProbs(CLzmaDec *p, const Byte *props, unsigned propsSize, ISzAllocPtr alloc);
-void LzmaDec_FreeProbs(CLzmaDec *p, ISzAllocPtr alloc);
+SRes LzmaDec_AllocateProbs (CLzmaDec *p, const Byte *props, unsigned propsSize, ISzAlloc *alloc);
+void LzmaDec_FreeProbs (CLzmaDec *p, ISzAlloc *alloc);
 
-SRes LzmaDec_Allocate(CLzmaDec *p, const Byte *props, unsigned propsSize, ISzAllocPtr alloc);
-void LzmaDec_Free(CLzmaDec *p, ISzAllocPtr alloc);
+SRes LzmaDec_Allocate (CLzmaDec *state, const Byte *prop, unsigned propsSize, ISzAlloc *alloc);
+void LzmaDec_Free (CLzmaDec *state, ISzAlloc *alloc);
 
 /* ---------- Dictionary Interface ---------- */
 
@@ -149,7 +136,7 @@ void LzmaDec_Free(CLzmaDec *p, ISzAllocPtr alloc);
    You must work with CLzmaDec variables directly in this interface.
 
    STEPS:
-     LzmaDec_Construct()
+     LzmaDec_Constr()
      LzmaDec_Allocate()
      for (each new stream)
      {
@@ -183,8 +170,8 @@ Returns:
   SZ_ERROR_DATA - Data error
 */
 
-SRes LzmaDec_DecodeToDic(CLzmaDec *p, SizeT dicLimit,
-    const Byte *src, SizeT *srcLen, ELzmaFinishMode finishMode, ELzmaStatus *status);
+SRes LzmaDec_DecodeToDic (CLzmaDec *p, SizeT dicLimit,
+                          const Byte *src, SizeT *srcLen, ELzmaFinishMode finishMode, ELzmaStatus *status);
 
 
 /* ---------- Buffer Interface ---------- */
@@ -200,8 +187,8 @@ finishMode:
   LZMA_FINISH_END - Stream must be finished after (*destLen).
 */
 
-SRes LzmaDec_DecodeToBuf(CLzmaDec *p, Byte *dest, SizeT *destLen,
-    const Byte *src, SizeT *srcLen, ELzmaFinishMode finishMode, ELzmaStatus *status);
+SRes LzmaDec_DecodeToBuf (CLzmaDec *p, Byte *dest, SizeT *destLen,
+                          const Byte *src, SizeT *srcLen, ELzmaFinishMode finishMode, ELzmaStatus *status);
 
 
 /* ---------- One Call Interface ---------- */
@@ -225,10 +212,8 @@ Returns:
   SZ_ERROR_INPUT_EOF - It needs more bytes in input buffer (src).
 */
 
-SRes LzmaDecode(Byte *dest, SizeT *destLen, const Byte *src, SizeT *srcLen,
-    const Byte *propData, unsigned propSize, ELzmaFinishMode finishMode,
-    ELzmaStatus *status, ISzAllocPtr alloc);
-
-EXTERN_C_END
+SRes LzmaDecode (Byte *dest, SizeT *destLen, const Byte *src, SizeT *srcLen,
+                 const Byte *propData, unsigned propSize, ELzmaFinishMode finishMode,
+                 ELzmaStatus *status, ISzAlloc *alloc);
 
 #endif

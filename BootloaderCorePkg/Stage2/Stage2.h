@@ -50,11 +50,6 @@
 #include <Guid/GraphicsInfoHob.h>
 #include <Guid/SmmInformationGuid.h>
 #include <Guid/MpCpuTaskInfoHob.h>
-#include <Guid/PciRootBridgeInfoGuid.h>
-#include <UniversalPayload/PciRootBridges.h>
-#include <UniversalPayload/AcpiTable.h>
-#include <UniversalPayload/SmbiosTable.h>
-#include <UniversalPayload/SerialPortInfo.h>
 #include <Service/PlatformService.h>
 #include <Pi/PiBootMode.h>
 #include <FspEas.h>
@@ -64,14 +59,7 @@
 #include <Library/DebugAgentLib.h>
 #include <Library/ElfLib.h>
 #include <Library/SmbiosInitLib.h>
-#include <Library/UniversalPayloadLib.h>
 #include <VerInfo.h>
-#include <Guid/SmramMemoryReserve.h>
-#include <Guid/SmmRegisterInfoGuid.h>
-#include <Guid/SpiFlashInfoGuid.h>
-#include <Guid/NvVariableInfoGuid.h>
-#include <Guid/SmmS3CommunicationInfoGuid.h>
-
 
 #define UIMAGE_FIT_MAGIC               (0x56190527)
 
@@ -168,15 +156,6 @@ VOID
 EFIAPI
 BoardNotifyPhase (
   IN BOARD_INIT_PHASE   Phase
-  );
-
-/**
-  Update graphics hobs.
-
-**/
-VOID
-UpdateGraphicsHob (
-  VOID
   );
 
 #endif

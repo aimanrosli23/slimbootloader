@@ -21,7 +21,6 @@ from .GuidSection import GuidSection
 from .FvImageSection import FvImageSection
 from .Ffs import FdfFvFileTypeToFileType
 from .GenFdsGlobalVariable import GenFdsGlobalVariable
-import shutil
 
 ## generate FFS from FILE
 #
@@ -68,8 +67,6 @@ class FileStatement (FileStatementClassObject):
         if FvName:
             Str += FvName
         OutputDir = os.path.join(GenFdsGlobalVariable.FfsDir, Str)
-        if os.path.exists(OutputDir):
-            shutil.rmtree(OutputDir)
         if not os.path.exists(OutputDir):
             os.makedirs(OutputDir)
 

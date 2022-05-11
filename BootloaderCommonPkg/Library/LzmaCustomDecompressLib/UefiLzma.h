@@ -11,14 +11,18 @@
 #ifndef __UEFILZMA_H__
 #define __UEFILZMA_H__
 
-#include <Uefi.h>
+#include <PiPei.h>
 #include <Library/BaseMemoryLib.h>
 
 #ifdef _WIN32
 #undef _WIN32
 #endif
 
-typedef UINTN size_t;
+#ifndef _SIZE_T_DEFINED
+#if !defined(_WIN64) || defined(__GNUC__)
+typedef unsigned int size_t;
+#endif
+#endif
 
 #ifdef _WIN64
 #undef _WIN64

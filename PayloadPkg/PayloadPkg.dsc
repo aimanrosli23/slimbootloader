@@ -45,7 +45,6 @@
   SerialPortLib | BootloaderCommonPkg/Library/SerialPortLib/SerialPortLib.inf
   DebugLib | BootloaderCommonPkg/Library/BootloaderDebugLib/BootloaderDebugLib.inf
   PcdLib | BootloaderCommonPkg/Library/PcdLib/PcdLib.inf
-  RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
   ConsoleInLib | BootloaderCommonPkg/Library/ConsoleInLib/ConsoleInLib.inf
   ConsoleOutLib | BootloaderCommonPkg/Library/ConsoleOutLib/ConsoleOutLib.inf
   GraphicsLib | BootloaderCommonPkg/Library/GraphicsLib/GraphicsLib.inf
@@ -65,7 +64,6 @@
   LitePeCoffLib|BootloaderCommonPkg/Library/LitePeCoffLib/LitePeCoffLib.inf
   DebugAgentLib|BootloaderCommonPkg/Library/DebugAgentLib/DebugAgentLibNull.inf
   TimerLib|BootloaderCommonPkg/Library/AcpiTimerLib/AcpiTimerLib.inf
-  DebugPortLib|BootloaderCommonPkg/Library/DebugPortLib/DebugPortLibNull.inf
 
 [PcdsPatchableInModule]
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel         | 0x8000004F

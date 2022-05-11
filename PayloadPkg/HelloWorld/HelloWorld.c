@@ -22,6 +22,8 @@ PayloadMain (
   )
 {
   UINT8      Key;
+  CHAR8      Message[64];
+  UINTN      Len;
 
   DEBUG ((DEBUG_INFO, "\n\n==================== Hello World ====================\n\n"));
 
@@ -30,7 +32,8 @@ PayloadMain (
     if (ConsolePoll ()) {
       if (ConsoleRead (&Key, 1) > 0) {
         if ((Key >= 0x20) && (Key < 0x7F)) {
-          ConsolePrint("Key '%c' pressed !\n", Key);
+          Len = AsciiSPrint (Message, sizeof (Message), "Key '%c' pressed !\n", Key);
+          ConsoleWrite (Message, Len);
         }
       }
     }

@@ -354,8 +354,6 @@ SecStartup2 (
   CONTAINER_LIST           *ContainerList;
   CONTAINER_ENTRY          *ContainerEntry;
   VOID                    **FieldPtr;
-  UINT32                    Tolum;
-  UINT64                    Touum;
 
   LdrGlobal = (LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer ();
   ASSERT (LdrGlobal != NULL);
@@ -448,7 +446,7 @@ SecStartup2 (
   LdrGlobal->MemPoolStart      = MemPoolStart;
   LdrGlobal->MemPoolCurrTop    = MemPoolCurrTop;
   LdrGlobal->MemPoolCurrBottom = MemPoolStart;
-  LdrGlobal->MemPoolMaxUsed    = 0;
+  LdrGlobal->MemUsableTop      = (UINT32)(FspReservedMemBase + FspReservedMemSize);
 
   if (FeaturePcdGet (PcdDmaProtectionEnabled)) {
     DmaBuffer = MemPoolStart - (PcdGet32 (PcdLoaderAcpiNvsSize) + PcdGet32 (PcdLoaderAcpiReclaimSize)
@@ -481,18 +479,6 @@ SecStartup2 (
   OldStatus = SaveAndSetDebugTimerInterrupt (FALSE);
   InitializeDebugAgent (DEBUG_AGENT_INIT_POSTMEM_SEC, NULL, NULL);
   SaveAndSetDebugTimerInterrupt (OldStatus);
-
-  // Initialize various memory info using the FSP HOB
-  // Platform might update it via SOC specific info during PostMemoryInit phase
-  Tolum = GetSystemTopOfMemeory (HobList, &Touum);
-  // Update system low usable memory top from FSP memory resource hob
-  SetMemoryInfo (EnumMemInfoTolum,  Tolum);
-  // Update system upper usable memory top from FSP memory resource hob
-  SetMemoryInfo (EnumMemInfoTouum,  Touum);
-  // Update DMA portected low memory top.
-  SetMemoryInfo (EnumMemInfoTodplm, FspReservedMemBase + FspReservedMemSize);
-  // Update total memory size
-  SetMemoryInfo (EnumMemInfoTom,    Tolum + (Touum - SIZE_4GB));
 
   // Restore S3_DATA in new LoaderGlobal
   LdrGlobal->S3DataPtr = AllocatePool (sizeof (S3_DATA));
@@ -587,11 +573,6 @@ SecStartup2 (
   BoardInit (PostMemoryInit);
   AddMeasurePoint (0x2040);
 
-  // Print memory top info
-  DEBUG ((DEBUG_INFO, "Memory Tolum @ 0x%llx\n", GetMemoryInfo (EnumMemInfoTolum)));
-  DEBUG ((DEBUG_INFO, "Memory Touum @ 0x%llx\n", GetMemoryInfo (EnumMemInfoTouum)));
-  DEBUG ((DEBUG_INFO, "Memory Tom   @ 0x%llx\n", GetMemoryInfo (EnumMemInfoTom)));
-
   // Switch to memory-based stack and continue execution at ContinueFunc
   StackTop  = LdrGlobal->StackTop - (sizeof (STAGE2_PARAM) + sizeof (STAGE1B_PARAM) + 0x40);
   StackTop  = ALIGN_DOWN (StackTop, 0x100);
@@ -663,11 +644,9 @@ ContinueFunc (
            ));
   DEBUG ((
            DEBUG_INFO,
-           "Stage1 heap: 0x%X (0x%X used, 0x%x max used)\n",
+           "Stage1 heap: 0x%X (0x%X used)\n",
            PcdGet32 (PcdStage1DataSize),
-           (OldLdrGlobal->MemPoolEnd - OldLdrGlobal->MemPoolCurrTop) +
-           (OldLdrGlobal->MemPoolCurrBottom - OldLdrGlobal->MemPoolStart),
-           OldLdrGlobal->MemPoolMaxUsed
+           OldLdrGlobal->MemPoolEnd - OldLdrGlobal->MemPoolCurrTop
            ));
   DEBUG_CODE_END ();
 

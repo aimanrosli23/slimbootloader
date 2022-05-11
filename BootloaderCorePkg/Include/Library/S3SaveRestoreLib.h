@@ -8,7 +8,6 @@
 #ifndef _S3_SAVE_RESTORE_LIB_H_
 #define _S3_SAVE_RESTORE_LIB_H_
 
-#include <Guid/SmmS3CommunicationInfoGuid.h>
 
 #define BL_PLD_COMM_SIG       SIGNATURE_32('B', 'P', 'C', 'O')
 
@@ -80,6 +79,11 @@ typedef struct {
   BL_PLD_COMM_HDR S3SaveHdr;
   REG_INFO        RegInfo[];
 } S3_SAVE_REG;
+
+typedef struct {
+  UINT32  ApicId;
+  UINT32  SmmBase;
+} CPU_SMMBASE;
 
 typedef struct {
   BL_PLD_COMM_HDR SmmBaseHdr;

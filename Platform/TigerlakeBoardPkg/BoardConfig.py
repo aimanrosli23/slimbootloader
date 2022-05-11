@@ -1,7 +1,7 @@
 ## @file
 # This file is used to provide board specific image information.
 #
-#  Copyright (c) 2018 - 2022, Intel Corporation. All rights reserved.<BR>
+#  Copyright (c) 2018 - 2021, Intel Corporation. All rights reserved.<BR>
 #
 #  SPDX-License-Identifier: BSD-2-Clause-Patent
 #
@@ -25,7 +25,7 @@ class Board(BaseBoard):
 
         self.VERINFO_IMAGE_ID       = 'SBL_TGL'
         self.VERINFO_PROJ_MAJOR_VER = 1
-        self.VERINFO_PROJ_MINOR_VER = 4
+        self.VERINFO_PROJ_MINOR_VER = 2
         self.VERINFO_SVN            = 1
         self.VERINFO_BUILD_DATE     = time.strftime("%m/%d/%Y")
 
@@ -40,19 +40,7 @@ class Board(BaseBoard):
         self.PCI_EXPRESS_BASE     = 0xC0000000
         self.PCI_IO_BASE          = 0x00002000
         self.PCI_MEM32_BASE       = 0x80000000
-        self.PCI_MEM64_BASE       = 0x1000000000
-
-        if self.BUILD_ARCH == 'X64':
-            # Assign Mem64/PMem64 PCI resources except for Bus0
-            self._PCI_ENUM_DOWNGRADE_MEM64  = 0
-            self._PCI_ENUM_DOWNGRADE_PMEM64 = 0
-            # Downgrade all devices on bus 0 but iGFX
-            self._PCI_ENUM_DOWNGRADE_BUS0   = 2
-            self.SUPPORT_ARI          = 1
-            self.SUPPORT_SR_IOV       = 1
-
-        self.ACPI_PROCESSOR_ID_BASE = 0
-        self.ACPI_PM_TIMER_BASE     = 0x1808
+        self.ACPI_PM_TIMER_BASE   = 0x1808
         self.LOADER_ACPI_RECLAIM_MEM_SIZE = 0x000090000
 
         self.FLASH_BASE_ADDRESS   = 0xFF000000
@@ -73,14 +61,10 @@ class Board(BaseBoard):
         self.ENABLE_FRAMEBUFFER_INIT    = 1
         # 1: To read ambient temperature at boot time 0: Disable the feature
         self.ENABLE_DTS           = 1
-        self.ENABLE_PCIE_PM       = 1
         self.ENABLE_FAST_BOOT     = 0
         self.HAVE_FUSA            = 1
         # 0: Disable  1: Enable  2: Auto (disable for UEFI payload, enable for others)
         self.ENABLE_SMM_REBASE     = 2
-
-        # Allow boot through GRUB config
-        self.ENABLE_GRUB_CONFIG   = 1
 
         if self.HAVE_FIT_TABLE:
             self.FIT_ENTRY_MAX_NUM  = 10
@@ -163,6 +147,7 @@ class Board(BaseBoard):
         self.VARIABLE_SIZE        = 0x00002000
         self.SBLRSVD_SIZE         = 0x00001000
         self.FWUPDATE_SIZE        = 0x00020000 if self.ENABLE_FWU else 0
+        self.OS_LOADER_FD_SIZE    = 0x0004F000
         self.OS_LOADER_FD_NUMBLK  = self.OS_LOADER_FD_SIZE // self.FLASH_BLOCK_SIZE
 
         self.TOP_SWAP_SIZE        = 0x080000
@@ -199,7 +184,7 @@ class Board(BaseBoard):
         if self.NON_REDUNDANT_SIZE < Non_Redundant_Components_Size:
             raise Exception ('Non redundant region size 0x%x is smaller than required components size 0x%x!' % (self.NON_REDUNDANT_SIZE, Non_Redundant_Components_Size))
 
-        self.PLD_HEAP_SIZE        = 0x08000000
+        self.PLD_HEAP_SIZE        = 0x04000000
         self.PLD_STACK_SIZE       = 0x00020000
         self.PLD_RSVD_MEM_SIZE    = 0x00500000
 
@@ -237,7 +222,7 @@ class Board(BaseBoard):
         #   the ImageId field in the VBT container.
         # VbtFileName is the VBT file name. It needs to be located under platform
         #   VbtBin folder.
-        #self._MULTI_VBT_FILE      = {1:'Vbt.dat', 2:'Vbt2.dat'}
+        self._MULTI_VBT_FILE      = {1:'Vbt.dat', 2:'Vbt_tglH_Hdmi.dat'}
 
     def PlatformBuildHook (self, build, phase):
         if phase == 'pre-build:before':
@@ -268,7 +253,7 @@ class Board(BaseBoard):
         dsc['LibraryClasses.%s' % self.BUILD_ARCH] = [
             'LoaderLib|Platform/CommonBoardPkg/Library/LoaderLib/LoaderLib.inf',
             'PchInfoLib|Silicon/$(PCH_PKG_NAME)/Library/PchInfoLib/PchInfoLib.inf',
-            'PchPcrLib|Silicon/CommonSocPkg/Library/PchPcrLib/PchPcrLib.inf',
+            'PchPcrLib|Silicon/$(PCH_PKG_NAME)/Library/PchPcrLib/PchPcrLib.inf',
             'PchP2sbLib|Silicon/$(PCH_PKG_NAME)/Library/PchP2sbLib/PchP2sbLib.inf',
             'PchSbiAccessLib|Silicon/CommonSocPkg/Library/PchSbiAccessLib/PchSbiAccessLib.inf',
             'PlatformHookLib|Silicon/$(SILICON_PKG_NAME)/Library/PlatformHookLib/PlatformHookLib.inf',
@@ -287,22 +272,10 @@ class Board(BaseBoard):
             'BasePchPciBdfLib|Silicon/$(PCH_PKG_NAME)/Library/BasePchPciBdfLib/BasePchPciBdfLib.inf',
             'GpioLib|Silicon/CommonSocPkg/Library/GpioLib/GpioLib.inf',
             'GpioSiLib|Silicon/$(PCH_PKG_NAME)/Library/GpioSiLib/GpioSiLib.inf',
-            'WatchDogTimerLib|Silicon/CommonSocPkg/Library/WatchDogTimerLib/WatchDogTimerLib.inf',
         ]
 
         if self.BUILD_CSME_UPDATE_DRIVER:
             dsc['LibraryClasses.%s' % self.BUILD_ARCH].append ('MeFwUpdateLib|Silicon/$(PCH_PKG_NAME)/Library/MeFwUpdateLib/MeFwUpdateLib.inf')
-
-        if self.ENABLE_PCIE_PM:
-            lib = [
-                'PciePm|Silicon/$(PCH_PKG_NAME)/Library/PciePm/PciePm.inf',
-                'PciExpressHelpersLib|Silicon/$(PCH_PKG_NAME)/Library/PciExpressHelpersLibrary/PciExpressHelpersLibrary.inf',
-                'BasePcieHelperLib|Silicon/$(PCH_PKG_NAME)/Library/BasePcieHelperLib/BasePcieHelperLib.inf',
-                'PcieClientRpLib|Silicon/$(PCH_PKG_NAME)/Library/PcieClientRpLib/PcieClientRpLib.inf'
-            ]
-            dsc['LibraryClasses.%s' % self.BUILD_ARCH].extend (lib)
-        else:
-            dsc['LibraryClasses.%s' % self.BUILD_ARCH].append ('PciePm|Silicon/CommonSocPkg/Library/PciePmNull/PciePmNull.inf')
 
         dsc['PcdsFeatureFlag.%s' % self.BUILD_ARCH] = [
             'gPlatformTigerLakeTokenSpaceGuid.PcdFusaEnabled | $(HAVE_FUSA)'

@@ -230,6 +230,16 @@ CONST EFI_ACPI_COMMON_HEADER *mPlatformAcpiTables[] = {
   NULL
 };
 
+UINT8
+GetSerialPortStrideSize (
+  VOID
+);
+
+UINT32
+GetSerialPortBase (
+  VOID
+  );
+
 VOID
 EnableLegacyRegions (
   VOID
@@ -260,7 +270,7 @@ PrintGpioConfigTable (
   GpioInitConf = (GPIO_INIT_CONFIG *)GpioConfData;
   for (Index  = 0; Index < GpioPinNum; Index++) {
     PadDataPtr = (UINT32 *)&GpioInitConf->GpioConfig;
-    DEBUG ((DEBUG_VERBOSE, "GPIO PAD: 0x%08X   DATA: 0x%08X 0x%08X\n", GpioInitConf->GpioPad, PadDataPtr[0], PadDataPtr[1]));
+    DEBUG ((DEBUG_INFO, "GPIO PAD: 0x%08X   DATA: 0x%08X 0x%08X\n", GpioInitConf->GpioPad, PadDataPtr[0], PadDataPtr[1]));
     GpioInitConf++;
   }
 }
@@ -843,28 +853,24 @@ TccModePostMemConfig (
   FspsUpd->FspsConfig.TccErrorLogEn   = TccCfgData->TccErrorLog;
   FspsUpd->FspsConfig.IfuEnable       = 0;
   if (!IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
-    //
-    // If FSPM doesn't enable TCC DSO timer, FSPS should also skip TCC DSO.
-    //
     DEBUG ((DEBUG_INFO, "DSO Tuning skipped.\n"));
     FspsUpd->FspsConfig.TccStreamCfgStatus = 1;
   } else if (TccCfgData->TccTuning != 0) {
-    // Reload Watch dog timer
     WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
 
-    // Load TCC stream config from container
-    TccStreamBase = NULL;
-    TccStreamSize = 0;
-    Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
-                            (VOID **)&TccStreamBase, &TccStreamSize);
-    if (EFI_ERROR (Status) || (TccStreamSize < sizeof (TCC_STREAM_CONFIGURATION))) {
-      DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
-    } else {
-      FspsUpd->FspsConfig.TccStreamCfgBase = (UINT32)(UINTN)TccStreamBase;
-      FspsUpd->FspsConfig.TccStreamCfgSize = TccStreamSize;
-      DEBUG ((DEBUG_INFO, "Load tcc stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
+// Load TCC stream config from container
+  TccStreamBase = NULL;
+  TccStreamSize = 0;
+  Status = LoadComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'),
+                          (VOID **)&TccStreamBase, &TccStreamSize);
+  if (EFI_ERROR (Status) || (TccStreamSize < sizeof (TCC_STREAM_CONFIGURATION))) {
+    DEBUG ((DEBUG_INFO, "Load TCC Stream %r, size = 0x%x\n", Status, TccStreamSize));
+  } else {
+    FspsUpd->FspsConfig.TccStreamCfgBase = (UINT32)(UINTN)TccStreamBase;
+    FspsUpd->FspsConfig.TccStreamCfgSize = TccStreamSize;
+    DEBUG ((DEBUG_INFO, "Load tcc stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
 
-      //Update UPD from stream
+    // Update UPD from stream
       StreamConfig   = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
       FspsUpd->FspsConfig.Eist                       = PolicyConfig->Pstates;
@@ -977,7 +983,6 @@ FspUpdatePsePolicy (
   Fspscfg->PchPseOobEnabled       = 0;
   Fspscfg->CpuTempSensorReadEnable = 1;
   Fspscfg->PchPseWoLEnabled       = 1;
-  Fspscfg->PchPseAicEnabled       = (UINT8)SiCfgData->PchPseAicEnabled;
 
   //Fspscfg->PseJtagEnabled       = 0;
   //Fspscfg->PseJtagPinMux        = 0;
@@ -1617,16 +1622,18 @@ UpdateFspConfig (
   if (mPchSciSupported) {
     Fspscfg->IsFusaSupported = 0x1;
     if (MemCfgData != NULL) {
-    	if (MemCfgData->IbeccErrorInj != 0x1){
-    		Fspscfg->IehMode = 0x1;
-    	}
-    }  
+        if (MemCfgData->IbeccErrorInj != 0x1){
+            Fspscfg->IehMode = 0x1;
+        }
+    }
     //
     // PchPse*Enable UPDs should be set to to 0x2 for
     // host ownership; set to 1 for PSE ownership.
     //
     Fspscfg->PchUnlockGpioPads   = 0x0;
   }
+
+  // W/A for Yocto boot issue
 
   PowerCfgData = (POWER_CFG_DATA *) FindConfigDataByTag (CDATA_POWER_TAG);
   if (PowerCfgData == NULL) {
@@ -1789,8 +1796,6 @@ UpdateFspConfig (
     // configure s0ix related FSP-S config
     Fspscfg->XdciEnable = 0;
   }
-  // PCH_GPIO_PADS
-  Fspscfg->PchUnlockGpioPads = (UINT8)SiCfgData->PchUnlockGpioPads;
 }
 
 
@@ -1892,8 +1897,7 @@ UpdateSerialPortInfo (
   IN  SERIAL_PORT_INFO  *SerialPortInfo
 )
 {
-  SerialPortInfo->BaseAddr64 = GetSerialPortBase ();
-  SerialPortInfo->BaseAddr   = (UINT32) SerialPortInfo->BaseAddr64;
+  SerialPortInfo->BaseAddr = GetSerialPortBase ();
   SerialPortInfo->RegWidth = GetSerialPortStrideSize ();
   if (GetDebugPort () >= PCH_MAX_SERIALIO_UART_CONTROLLERS) {
     // IO Type

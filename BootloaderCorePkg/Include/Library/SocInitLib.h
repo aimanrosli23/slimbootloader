@@ -59,14 +59,4 @@ UpdateResetReason (
   VOID
   );
 
-/**
- Update memory map related info using SOC registers.
-
- **/
-VOID
-EFIAPI
-UpdateMemoryInfo (
-  VOID
-);
-
 #endif

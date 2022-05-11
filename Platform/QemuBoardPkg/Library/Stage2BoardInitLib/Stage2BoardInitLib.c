@@ -262,127 +262,6 @@ EmuGraphicsInit (
   return Status;
 }
 
-/**
-  Add a Smbios type string into a buffer
-
-**/
-STATIC
-EFI_STATUS
-AddSmbiosTypeString (
-  SMBIOS_TYPE_STRINGS  *Dest,
-  UINT8                 Type,
-  UINT8                 Index,
-  CHAR8                *String
-  )
-{
-  UINTN   Length;
-
-  Dest->Type    = Type;
-  Dest->Idx     = Index;
-  if (String != NULL) {
-    Length = AsciiStrLen (String);
-
-    Dest->String  = (CHAR8 *)AllocateZeroPool (Length + 1);
-    if (Dest->String == NULL) {
-      return EFI_OUT_OF_RESOURCES;
-    }
-    CopyMem (Dest->String, String, Length);
-  }
-
-  return EFI_SUCCESS;
-}
-
-/**
-  Initialize necessary information for Smbios
-
-  @retval EFI_SUCCESS             Initialized necessary information successfully
-  @retval EFI_OUT_OF_RESOURCES    Failed to allocate memory for Smbios info
-
-**/
-EFI_STATUS
-InitializeSmbiosInfo (
-  VOID
-  )
-{
-  CHAR8                 TempStrBuf[SMBIOS_STRING_MAX_LENGTH];
-  UINT16                Index;
-  UINTN                 Length;
-  SMBIOS_TYPE_STRINGS  *TempSmbiosStrTbl;
-  BOOT_LOADER_VERSION  *VerInfoTbl;
-  VOID                 *SmbiosStringsPtr;
-
-  Index             = 0;
-  TempSmbiosStrTbl  = (SMBIOS_TYPE_STRINGS *) AllocateTemporaryMemory (0);
-  VerInfoTbl    = GetVerInfoPtr ();
-
-  //
-  // SMBIOS_TYPE_BIOS_INFORMATION
-  //
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BIOS_INFORMATION,
-    1, "Intel Corporation");
-  if (VerInfoTbl != NULL) {
-    AsciiSPrint (TempStrBuf, sizeof (TempStrBuf),
-      "SB_QEMU.%03d.%03d.%03d.%03d.%05d.%c\0",
-      VerInfoTbl->ImageVersion.CoreMajorVersion,
-      VerInfoTbl->ImageVersion.CoreMinorVersion,
-      VerInfoTbl->ImageVersion.ProjMajorVersion,
-      VerInfoTbl->ImageVersion.ProjMinorVersion,
-      VerInfoTbl->ImageVersion.BuildNumber,
-      VerInfoTbl->ImageVersion.BldDebug ? 'D' : 'R');
-  } else {
-    AsciiSPrint (TempStrBuf, sizeof (TempStrBuf), "%a", "Unknown");
-  }
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BIOS_INFORMATION,
-    2, TempStrBuf);
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BIOS_INFORMATION,
-    3, __DATE__);
-
-  //
-  // SMBIOS_TYPE_SYSTEM_INFORMATION
-  //
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_SYSTEM_INFORMATION,
-    1, "Intel Corporation");
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_SYSTEM_INFORMATION,
-    2, "QEMU Virtual Platform");
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_SYSTEM_INFORMATION,
-    3, "0.1");
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_SYSTEM_INFORMATION,
-    4, "System Serial Number");
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_SYSTEM_INFORMATION,
-    5, "System SKU Number");
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_SYSTEM_INFORMATION,
-    6, "Virtual System");
-
-  //
-  // SMBIOS_TYPE_BASEBOARD_INFORMATION
-  //
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BASEBOARD_INFORMATION,
-    1, "Intel Corporation");
-  AsciiSPrint (TempStrBuf, sizeof (TempStrBuf), "%8a (ID:%02X)", GetPlatformName(), GetPlatformId ());
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BASEBOARD_INFORMATION,
-    2, TempStrBuf);
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BASEBOARD_INFORMATION,
-    3, "1");
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_BASEBOARD_INFORMATION,
-    4, "Board Serial Number");
-
-  //
-  // SMBIOS_TYPE_END_OF_TABLE
-  //
-  AddSmbiosTypeString (&TempSmbiosStrTbl[Index++], SMBIOS_TYPE_END_OF_TABLE,
-    0, NULL);
-
-  Length = sizeof (SMBIOS_TYPE_STRINGS) * Index;
-  SmbiosStringsPtr = AllocatePool (Length);
-  if (SmbiosStringsPtr == NULL) {
-    return EFI_OUT_OF_RESOURCES;
-  }
-  CopyMem (SmbiosStringsPtr, TempSmbiosStrTbl, Length);
-  (VOID) PcdSet32S (PcdSmbiosStringsPtr, (UINT32)(UINTN)SmbiosStringsPtr);
-  (VOID) PcdSet16S (PcdSmbiosStringsCnt, Index);
-
-  return EFI_SUCCESS;
-}
 
 
 /**
@@ -454,22 +333,11 @@ BoardInit (
     break;
 
   case PostSiliconInit:
-    // Initialize Smbios Info
-    if (FeaturePcdGet (PcdSmbiosEnabled)) {
-      InitializeSmbiosInfo ();
-    }
     // Open TSEG so that MpInit can do SMM rebasing if required
     PciAnd8 (PCI_LIB_ADDRESS(0, 0, 0, MCH_ESMRAMC), (UINT8)~MCH_ESMRAMC_T_EN);
     PciAndThenOr8 (PCI_LIB_ADDRESS(0, 0, 0, MCH_SMRAM), (UINT8)~MCH_SMRAM_D_CLOSE, MCH_SMRAM_D_OPEN);
     if (PcdGetBool (PcdFramebufferInitEnabled)) {
       EmuGraphicsInit ();
-    }
-    break;
-
-  case PostPciEnumeration:
-    Status = SetFrameBufferWriteCombining (0, MAX_UINT32);
-    if (EFI_ERROR(Status)) {
-      DEBUG ((DEBUG_INFO, "Failed to set GFX framebuffer as WC\n"));
     }
     break;
 
@@ -553,9 +421,8 @@ UpdateSerialPortInfo (
   IN  SERIAL_PORT_INFO  *SerialPortInfo
 )
 {
-  SerialPortInfo->Type       = 1;
-  SerialPortInfo->BaseAddr64 = GetSerialPortBase ();
-  SerialPortInfo->BaseAddr   = (UINT32) SerialPortInfo->BaseAddr64;
+  SerialPortInfo->Type     = 1;
+  SerialPortInfo->BaseAddr = GetSerialPortBase();
   SerialPortInfo->RegWidth = GetSerialPortStrideSize();
 }
 
@@ -574,7 +441,7 @@ UpdateOsBootMediumInfo (
 
   FillBootOptionListFromCfgData (OsBootOptionList);
 
-  if (OsBootOptionList->CurrentBoot == MAX_BOOT_OPTION_ENTRY - 1) {
+  if (OsBootOptionList->CurrentBoot == MAX_BOOT_OPTION_CFGDATA_ENTRY) {
     //
     // Read boot order, it is passed in by QEMU command
     //   QEMU boot order (a=1 c=2 d=3 n=4 at CMOS 0x3D)
@@ -683,8 +550,6 @@ UpdateFrameBufferDeviceInfo (
     GfxDeviceInfo->VendorId = PciRead16 (PCI_LIB_ADDRESS (0, Dev, 0, 0));
     GfxDeviceInfo->DeviceId = PciRead16 (PCI_LIB_ADDRESS (0, Dev, 0, 2));
   }
-
-  SetDeviceAddr (PlatformDeviceGraphics, 0, (0 << 16) | (Dev << 8) | 0);
 }
 
 /**

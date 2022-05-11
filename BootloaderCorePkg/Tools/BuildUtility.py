@@ -2,7 +2,7 @@
 ## @ BuildUtility.py
 # Build bootloader main script
 #
-# Copyright (c) 2016 - 2022, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2016 - 2021, Intel Corporation. All rights reserved.<BR>
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 #
 ##
@@ -35,7 +35,7 @@ from   GenContainer import gen_container_bin
 build_toolchains = {
     'python'    : '3.6.0',
     'nasm'      : '2.12.02',
-    'iasl'      : '20190509',
+    'iasl'      : '20160422',
     'openssl'   : '1.1.0g',
     'git'       : '2.20.0',
     'vs'        : '2015',
@@ -196,15 +196,10 @@ class PciEnumPolicyInfo(Structure):
         ('DowngradeIo32',           c_uint16, 1),
         ('DowngradeMem64',          c_uint16, 1),
         ('DowngradePMem64',         c_uint16, 1),
-        # 0: Do not downgrade PCI devices on bus 0
-        # 1: Downgrade all PCI devices on bus 0
-        # 2: Downgrade all PCI devices on bus 0 but GFX
-        # 3: Reserved
-        ('DowngradeBus0',           c_uint16, 2),
-        ('DowngradeReserved',       c_uint16, 11),
+        ('DowngradeBus0',           c_uint16, 1),
+        ('DowngradeReserved',       c_uint16, 12),
         ('FlagAllocPmemFirst',      c_uint16, 1),
-        ('FlagAllocRomBar',         c_uint16, 1),
-        ('FlagReserved',            c_uint16, 14),
+        ('FlagReserved',            c_uint16, 15),
         ('BusScanType',             c_uint8), # 0: list, 1: range
         ('NumOfBus',                c_uint8),
         ('BusScanItems',            ARRAY(c_uint8, 0))
@@ -217,7 +212,6 @@ class PciEnumPolicyInfo(Structure):
         self.DowngradeBus0      = 1
         self.DowngradeReserved  = 0
         self.FlagAllocPmemFirst = 0
-        self.FlagAllocRomBar    = 0
         self.FlagReserved       = 0
         self.Reserved           = 0
         self.BusScanType        = 0
@@ -247,8 +241,7 @@ def get_gcc_info ():
     toolchain = 'GCC5'
     cmd = 'gcc'
     try:
-        prefix = os.environ.get(toolchain + '_BIN')
-        ver = subprocess.check_output([(prefix if prefix else '') + cmd, '-dumpfullversion']).decode().strip()
+        ver = subprocess.check_output([cmd, '-dumpfullversion']).decode().strip()
     except:
         ver = ''
         pass
@@ -535,7 +528,7 @@ def gen_flash_map_bin (flash_map_file, comp_list):
 def copy_expanded_file (src, dst):
     gen_cfg_data ("GENDLT", src, dst)
 
-def gen_config_file (fv_dir, brd_name_override, brd_name, platform_id, pri_key, cfg_db_size, cfg_size, cfg_int, cfg_ext, sign_scheme, hash_type, svn):
+def gen_config_file (fv_dir, brd_name, platform_id, pri_key, cfg_db_size, cfg_size, cfg_int, cfg_ext, sign_scheme, hash_type, svn):
     # Remove previous generated files
     for file in glob.glob(os.path.join(fv_dir, "CfgData*.*")):
             os.remove(file)
@@ -547,8 +540,6 @@ def gen_config_file (fv_dir, brd_name_override, brd_name, platform_id, pri_key, 
 
     # Generate CFG data
     brd_name_dir      = os.path.join(os.environ['PLT_SOURCE'], 'Platform', brd_name)
-    if not os.path.exists(brd_name_dir):
-        brd_name_dir      = os.path.join(os.environ['SBL_SOURCE'], 'Platform', brd_name)
     comm_brd_dir      = os.path.join(os.environ['SBL_SOURCE'], 'Platform', 'CommonBoardPkg')
     brd_cfg_dir       = os.path.join(brd_name_dir, 'CfgData')
     com_brd_cfg_dir   = os.path.join(comm_brd_dir, 'CfgData')
@@ -563,8 +554,6 @@ def gen_config_file (fv_dir, brd_name_override, brd_name, platform_id, pri_key, 
     cfg_bin_int_file  = os.path.join(fv_dir, "CfgDataInt.bin")  #_INT_CFG_DATA_FILE settings
     cfg_bin_ext_file  = os.path.join(fv_dir, "CfgDataExt.bin")  #_EXT_CFG_DATA_FILE settings
     cfg_comb_dsc_file = os.path.join(fv_dir, 'CfgDataDef.' + file_ext)
-    if brd_name_override != '':
-        brd_cfg2_dir  = os.path.join(os.environ['PLT_SOURCE'], 'Platform', brd_name_override, 'CfgData')
 
     # Generate parsed result into pickle file to improve performance
     if os.path.exists(cfg_dsc_dyn_file):
@@ -585,13 +574,7 @@ def gen_config_file (fv_dir, brd_name_override, brd_name, platform_id, pri_key, 
 
         cfg_bin_list = []
         for dlt_file in cfg_file_list:
-            cfg_dlt_file = ''
-            if brd_name_override != '':
-                cfg_dlt_file = os.path.join(brd_cfg2_dir, dlt_file)
-
-            if cfg_dlt_file == '' or not os.path.exists(cfg_dlt_file):
-                cfg_dlt_file = os.path.join(brd_cfg_dir, dlt_file)
-
+            cfg_dlt_file  = os.path.join(brd_cfg_dir, dlt_file)
             if not os.path.exists(cfg_dlt_file):
                 test_file = os.path.join(fv_dir, dlt_file)
                 if os.path.exists(test_file):
@@ -638,11 +621,7 @@ def gen_config_file (fv_dir, brd_name_override, brd_name, platform_id, pri_key, 
     # copy delta files
     dlt_list  = cfg_int[1:] + cfg_ext
     for dlt_file in dlt_list:
-        src_dlt_file = ''
-        if brd_name_override != '':
-            src_dlt_file = os.path.join(brd_cfg2_dir, dlt_file)
-        if src_dlt_file == '' or not os.path.exists(src_dlt_file):
-            src_dlt_file = os.path.join (brd_cfg_dir, dlt_file)
+        src_dlt_file = os.path.join (brd_cfg_dir, dlt_file)
         if not os.path.exists(src_dlt_file):
             src_dlt_file = os.path.join (fv_dir, dlt_file)
         if not os.path.exists(src_dlt_file):
@@ -1016,11 +995,8 @@ def check_for_toolchain(toolchain_preferred):
         os.environ[toolchain_prefix] = toolchain_path
     return True
 
-def verify_toolchains(toolchain_preferred, toolchain_dict = None):
+def verify_toolchains(toolchain_preferred):
     print('Checking Toolchain Versions...')
-
-    if toolchain_dict:
-        build_toolchains.update(toolchain_dict)
 
     valid  = check_for_python()
     valid &= check_for_openssl()
@@ -1232,7 +1208,6 @@ def gen_pci_enum_policy_info (policy_dict):
         policy_info.DowngradePMem64 = policy_dict['DOWNGRADE_PMEM64']
         policy_info.DowngradeBus0   = policy_dict['DOWNGRADE_BUS0']
         policy_info.FlagAllocPmemFirst  = policy_dict['FLAG_ALLOC_PMEM_FIRST']
-        policy_info.FlagAllocRomBar = policy_dict['FLAG_ALLOC_ROM_BAR']
         policy_info.BusScanType     = policy_dict['BUS_SCAN_TYPE']
         bus_scan_items              = policy_dict['BUS_SCAN_ITEMS']
 

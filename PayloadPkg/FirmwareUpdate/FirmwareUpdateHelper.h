@@ -1,16 +1,13 @@
 /** @file
   The header file for internal firmware update definitions.
 
-  Copyright (c) 2020 - 2021, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2020, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
 
 #ifndef __INTERNAL_FIRMWARE_UPDATE_LIB_H__
 #define __INTERNAL_FIRMWARE_UPDATE_LIB_H__
-
-#include <Uefi/UefiBaseType.h>
-#include <Library/ResetSystemLib.h>
 
 /**
   Update a region block.
@@ -140,19 +137,6 @@ AfterUpdateEnforceFwUpdatePolicy (
  );
 
 /**
-  Perform full BIOS region update.
-
-  @param[in] ImageHdr       Pointer to fw mgmt capsule Image header
-
-  @retval  EFI_SUCCESS      Update successful.
-  @retval  other            error occurred during firmware update
-**/
-EFI_STATUS
-UpdateFullBiosRegion (
-  IN EFI_FW_MGMT_CAP_IMAGE_HEADER  *ImageHdr
-  );
-
-/**
   Perform system Firmware update.
 
   This function will update SBL or Configuration data alone.
@@ -218,26 +202,4 @@ CheckSblConfigDataSvn (
   IN   FIRMWARE_UPDATE_POLICY         FwPolicy,
   OUT  UINT8                         *SvnStatus
   );
-
-/**
-  Reboot platform.
-
-  @param[in]  ResetType   Cold, Warm or Shutdown
-
-**/
-VOID
-Reboot (
-  IN  EFI_RESET_TYPE        ResetType
-  );
-
-/**
-  Retrieve the SBL rom image offset within BIOS region.
-
-  @retval  The SBL rom image offset within BIOS region
-**/
-UINT32
-GetRomImageOffsetInBiosRegion (
-  VOID
-  );
-
 #endif

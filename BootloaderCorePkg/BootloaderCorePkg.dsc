@@ -1,7 +1,7 @@
 ## @file
 # Provides driver and definitions to build bootloader.
 #
-# Copyright (c) 2016 - 2022, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2016 - 2021, Intel Corporation. All rights reserved.<BR>
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 #
 ##
@@ -39,7 +39,6 @@
 ################################################################################
 [LibraryClasses]
   PcdLib|BootloaderCommonPkg/Library/PcdLib/PcdLib.inf
-  RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
   BaseLib|MdePkg/Library/BaseLib/BaseLib.inf
   IoLib|MdePkg/Library/BaseIoLibIntrinsic/BaseIoLibIntrinsic.inf
   PciLib|MdePkg/Library/BasePciLibPciExpress/BasePciLibPciExpress.inf
@@ -54,7 +53,7 @@
   ExtraBaseLib|BootloaderCommonPkg/Library/ExtraBaseLib/ExtraBaseLib.inf
   ModuleEntryLib|BootloaderCommonPkg/Library/ModuleEntryLib/ModuleEntryLib.inf
   LzmaDecompressLib|BootloaderCommonPkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf
-  Lz4CompressLib|BootloaderCommonPkg/Library/Lz4CompressLib/Lz4CompressLib.inf
+  Lz4DecompressLib|BootloaderCommonPkg/Library/Lz4DecompressLib/Lz4DecompressLib.inf
   DecompressLib|BootloaderCommonPkg/Library/DecompressLib/DecompressLib.inf
   RleCompressLib|BootloaderCommonPkg/Library/RleCompressLib/RleCompressLib.inf
   FspSupportLib|BootloaderCorePkg/Library/FspSupportLib/FspSupportLib.inf
@@ -122,7 +121,6 @@
   MtrrLib|BootloaderCommonPkg/Library/MtrrLib/MtrrLib.inf
   StringSupportLib|BootloaderCommonPkg/Library/StringSupportLib/StringSupportLib.inf
   ThunkLib|BootloaderCommonPkg/Library/ThunkLib/ThunkLib.inf
-  UniversalPayloadLib|BootloaderCommonPkg/Library/UniversalPayloadLib/UniversalPayloadLib.inf
 
 !if $(ENABLE_SOURCE_DEBUG)
   DebugAgentLib|BootloaderCommonPkg/Library/DebugAgentLib/DebugAgentLib.inf
@@ -224,9 +222,8 @@
   gPlatformModuleTokenSpaceGuid.PcdCfgDataLoadSource      | $(CFGDATA_REGION_TYPE)
   gPlatformModuleTokenSpaceGuid.PcdCfgDatabaseSize        | $(CFG_DATABASE_SIZE)
 
-  gPlatformModuleTokenSpaceGuid.PcdHashStoreSize          | $(HASH_STORE_SIZE)
+  gPlatformModuleTokenSpaceGuid.PcdHashStoreSize             | $(HASH_STORE_SIZE)
 
-  gPlatformModuleTokenSpaceGuid.PcdAcpiProcessorIdBase    | $(ACPI_PROCESSOR_ID_BASE)
   gPlatformModuleTokenSpaceGuid.PcdCpuMaxLogicalProcessorNumber | $(CPU_MAX_LOGICAL_PROCESSOR_NUMBER)
 
   gPlatformCommonLibTokenSpaceGuid.PcdConsoleInDeviceMask  | $(CONSOLE_IN_DEVICE_MASK)
@@ -252,8 +249,6 @@
 
   gPlatformCommonLibTokenSpaceGuid.PcdCompSignHashAlg             | $(SIGN_HASH_TYPE)
   gPlatformModuleTokenSpaceGuid.PcdFastBootEnabled                | $(ENABLE_FAST_BOOT)
-
-  gPayloadTokenSpaceGuid.PcdRtcmRsvdSize                        | $(RTCM_RSVD_SIZE)
 
 
 [PcdsPatchableInModule]
@@ -335,7 +330,6 @@
   gPlatformModuleTokenSpaceGuid.PcdEnableSetup            | $(ENABLE_SBL_SETUP)
   gPayloadTokenSpaceGuid.PcdPayloadModuleEnabled          | $(ENABLE_PAYLOD_MODULE)
   gPlatformModuleTokenSpaceGuid.PcdEnableDts              | $(ENABLE_DTS)
-  gPlatformModuleTokenSpaceGuid.PcdEnablePciePm           | $(ENABLE_PCIE_PM)
 
 !ifdef $(S3_DEBUG)
   gPlatformModuleTokenSpaceGuid.PcdS3DebugEnabled         | $(S3_DEBUG)
@@ -408,14 +402,12 @@
       AbSupportLib        | PayloadPkg/Library/AbSupportLib/AbSupportLib.inf
       SblParameterLib     | PayloadPkg/Library/SblParameterLib/SblParameterLib.inf
       TrustyBootLib       | PayloadPkg/Library/TrustyBootLib/TrustyBootLib.inf
-      MpServiceLib        | PayloadPkg/Library/MpServiceLib/MpServiceLib.inf
   }
 
 !if $(ENABLE_FWU)
   PayloadPkg/FirmwareUpdate/FirmwareUpdate.inf {
     <PcdsFixedAtBuild>
       gPlatformCommonLibTokenSpaceGuid.PcdDebugOutputDeviceMask  | $(DEBUG_OUTPUT_DEVICE_MASK)
-      gPlatformCommonLibTokenSpaceGuid.PcdConsoleOutDeviceMask   | ($(CONSOLE_OUT_DEVICE_MASK) + 0x02)
     <LibraryClasses>
       MemoryAllocationLib     | BootloaderCommonPkg/Library/FullMemoryAllocationLib/FullMemoryAllocationLib.inf
       PayloadEntryLib         | PayloadPkg/Library/PayloadEntryLib/PayloadEntryLib.inf

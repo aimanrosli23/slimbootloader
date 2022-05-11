@@ -24,7 +24,6 @@
 
 [Packages]
   MdePkg/MdePkg.dec
-  BootloaderCommonPkg/BootloaderCommonPkg.dec
   BootloaderCorePkg/BootloaderCorePkg.dec
   Silicon/ElkhartlakePkg/ElkhartlakePkg.dec
   BootloaderCommonPkg/BootloaderCommonPkg.dec

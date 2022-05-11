@@ -1,17 +1,11 @@
 #!/usr/bin/env python
 ## @ SblSetup.py
-# Setup script to change SBL CFGDATA at runtime using MicroPython.
+# Setup script to change SBL CFGDATA at runtime.
 #
-# Copyright (c) 2020 - 2021, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2020, Intel Corporation. All rights reserved.<BR>
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 #
 
-#
-# This script can be execute on either host or target
-# When running host, it is requied to use putty to connect to named pipe.
-#   python SblSetup.py  cfg_json_file  cfg_bin_file
-# When running on target, it needs to enable the MicroPython payload module.
-#
 try:
     from   ucollections import OrderedDict
     is_micro_py = True
@@ -48,14 +42,6 @@ def bytes_to_value (bytes):
 
 def value_to_bytearray (value, length):
     return bytearray(value_to_bytes(value, length))
-
-def string_decode (str):
-    # MPY might have unicode disabled
-    return ''.join([chr(i) for i in str])
-
-def string_encode (str):
-    # MPY might have unicode disabled
-    return bytes([ord(i) for i in str])
 
 def get_bits_from_bytes (bytes, start, length):
     if length == 0:
@@ -140,14 +126,7 @@ def wrap_line (input_string, lim):
             lines.append(" ".join(l))
     return lines
 
-def get_char ():
-    if is_mp():
-       return pyb.getch()
-    else:
-       ch = g_pipe.recv()
-       return ord(ch)
-
-def get_ch_host ():
+def get_ch_py ():
     if not msvcrt.kbhit():
         return b''
 
@@ -180,7 +159,14 @@ def get_ch_host ():
              ch = b'unknown'
     return ch
 
-def get_ch_target ():
+def get_char ():
+    if is_mp():
+       return pyb.getch()
+    else:
+       ch = g_pipe.recv()
+       return ord(ch)
+
+def get_ch ():
     ch = chr(get_char())
 
     if ch == '\x00':
@@ -224,12 +210,6 @@ def get_ch_target ():
                 return b'pgup'
             return b''
     return bytes([ord(ch)])
-
-def get_ch ():
-    if isinstance(g_pipe, NamedPipeClient):
-        return get_ch_host ()
-    else:
-        return get_ch_target ()
 
 class NamedPipeServer:
     def __init__(self):
@@ -289,9 +269,6 @@ class NamedPipeClient:
 
     def send(self, data, col, mode):
         win32pipe.TransactNamedPipe(self.hpipe, data, 2, None)
-
-    def recv(self):
-        return b'\x00'
 
     def close(self):
         if self.hpipe:
@@ -1893,7 +1870,9 @@ def format_value_to_str (value, bit_length, old_value = ''):
     bvalue = value_to_bytearray (value, length)
     if fmt in ['"', "'"]:
         newval = bytes(bvalue).rstrip(b'\x00')
-        svalue = string_decode (newval)
+        # MPY may disable unicode support
+        # svalue = svalue.decode()
+        svalue = ''.join([chr(i) for i in newval])
         value_str = fmt + svalue + fmt
     elif fmt == "{":
         value_str = '{ ' + ', '.join(['0x%02x' % i for i in bvalue]) + ' }'
@@ -1917,7 +1896,7 @@ def format_str_to_value (value_str, bit_length, array = True):
     value_str = value_str.strip()
     if check_quote (value_str):
         value_str = value_str[1:-1]
-        bvalue = string_encode (value_str)
+        bvalue = bytearray (value_str)
         if len(bvalue) == 0:
             bvalue = bytearray(b'\x00')
         if array:
@@ -2062,7 +2041,7 @@ def rebuild_cfgs (cfg_win, pages, page_id):
                 tabel1.show()
                 rc.adjust (0, rc.h + 1, 0, 0)
 
-        elif itype in ['Reserved', 'Constant']:
+        elif itype == 'Reserved':
             pass
 
         else:
@@ -2129,8 +2108,7 @@ def main():
         data = bytearray(blen // 8)
         pyb.build_cfgd (data)
     else:
-        data_file = sys.argv[2]
-        fo = open(data_file, 'rb')
+        fo = open(sys.argv[2], 'rb')
         data = bytearray(fo.read())
         fo.close()
     update_values (cfg_tree, data)
@@ -2212,15 +2190,10 @@ def main():
             data = generate_values (cfg_tree)
             pyb.save_cfgd (data)
 
-        pyb.reboot (1)
+        pyb.reboot (0)
         while True:
             utime.sleep_ms (20)
-    else:
-        if sel == 'y':
-            data = generate_values (cfg_tree)
-            fo = open(data_file, 'wb')
-            fo.write (data)
-            fo.close()
+
 
 def main_loop (scr_win, cfg_win, pages):
     # message loop
@@ -2314,9 +2287,6 @@ def main_loop (scr_win, cfg_win, pages):
             if ret == -2:
                 # move to next focus
                 next_focus = get_next_focus (widgets, curr_focus, 1)
-                if next_focus == curr_focus:
-                    # no more item on page, quit edit mode
-                    widgets[curr_focus].set_editable (False)
 
             # widget changed its value, recheck condition
             if recheck_condition (widgets, pages):
@@ -2408,10 +2378,6 @@ def main_loop (scr_win, cfg_win, pages):
 if is_mp():
     g_pipe = NamedPipeVirtual()
 else:
-    if len(sys.argv) != 3:
-        print ('Usage:\n  python SblSetup.py  cfg_json_file  cfg_bin_file')
-        sys.exit (0)
-
     if TERM.SCREEN_MODE & 2:
         TERM.SCREEN_MODE = 2
         g_pipe = NamedPipeServer()

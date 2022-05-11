@@ -463,7 +463,6 @@ SecStartup (
   LdrGlobal->MemPoolStart          = StackTop;
   LdrGlobal->MemPoolCurrTop        = LdrGlobal->MemPoolEnd;
   LdrGlobal->MemPoolCurrBottom     = LdrGlobal->MemPoolStart;
-  LdrGlobal->MemPoolMaxUsed        = 0;
   LdrGlobal->DebugPrintErrorLevel  = 0;
   LdrGlobal->PerfData.PerfIndex    = 2;
   LdrGlobal->PerfData.FreqKhz      = GetTimeStampFrequency ();
@@ -509,7 +508,6 @@ ContinueFunc (
   UINT8                     ImageId[9];
   BOOT_LOADER_VERSION      *VerInfoTbl;
   FSP_INFO_HEADER          *FspInfoHdr;
-  UINT32                    CpuSig;
 
   LdrGlobal     = (LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer();
   AddMeasurePoint (0x1060);
@@ -549,10 +547,6 @@ ContinueFunc (
   FspInfoHdr = (FSP_INFO_HEADER *)(UINTN)(PcdGet32 (PcdFSPTBase) + FSP_INFO_HEADER_OFF);
   CopyMem (ImageId, &FspInfoHdr->ImageId, sizeof (UINT64));
   DEBUG ((DEBUG_INFO, "FSPV: ID(%a) REV(%08X)\n", ImageId, FspInfoHdr->ImageRevision));
-
-  AsmCpuid (1, &CpuSig, NULL, NULL, NULL);
-  DEBUG ((DEBUG_INFO, "CPUV: ID(%x) UCODE(%x)\n", CpuSig, \
-          RShiftU64 (AsmReadMsr64 (MSR_IA32_BIOS_SIGN_ID), 32)));
 
   DEBUG ((DEBUG_INFO, "Loader global data @ 0x%08X\n", (UINT32)(UINTN)LdrGlobal));
   DEBUG ((DEBUG_INFO, "Run  STAGE1A @ 0x%08X\n", PcdGet32 (PcdStage1ALoadBase)));

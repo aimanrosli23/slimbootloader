@@ -138,6 +138,8 @@ External(\_SB.PC01.TRP0.PMSX, IntObj)
 External(\_SB.PC01.TRP1.PMSX, IntObj)
 External(\_SB.PC01.TRP2.PMSX, IntObj)
 External(\_SB.PC01.TRP3.PMSX, IntObj)
+External(\_SB.PC00.GTSN.TADL, IntObj)
+External(\_SB.PC00.GTSN.TADH, IntObj)
 
 External(TBTD, MethodObj)
 External(TBTF, MethodObj)
@@ -1095,7 +1097,7 @@ Scope(\_SB.PC00)
 
     // Check for a specific OS which supports _OSI.
 
-    If(CondRefOf(\_OSI))
+    If(CondRefOf(\_OSI,Local0))
     {
       If(\_OSI("Windows 2001")) // Windows XP
       {

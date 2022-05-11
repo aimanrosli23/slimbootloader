@@ -6,6 +6,7 @@
 **/
 Include("GpioAcpiDefinesVer3.h")
 
+External(\NGPS, IntObj)
 
 Scope(\_SB) {
   //----------------------------

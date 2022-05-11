@@ -180,7 +180,7 @@ def main():
     if args.work_dir == '':
         print ("Please specify stitch work directory")
         print ('%s' % stitch_cfg_file.extra_usage_txt)
-        return 1
+        return 0
 
     sku_dict = stitch_cfg_file.get_platform_sku()
     if len (sku_dict) == 1 and args.platform == '':
@@ -191,15 +191,15 @@ def main():
         print ("Invalid sku (%s), Please provide valid sku:" % args.platform)
         for sku in sku_dict :
             print (" %s - 'For %s'" % (sku, sku_dict[sku]))
-        return 1
+        return 0
 
     if args.btg_profile in ["vm","fvme"] and args.tpm == "none":
         print ("ERROR: Choose appropriate Tpm type for BootGuard profile 3 and 5")
-        return 1
+        return 0
 
     plt_params_list = get_para_list (args.option.split(';'))
     if not stitch_cfg_file.check_parameter(plt_params_list):
-        exit (1)
+        exit (0)
 
     print ("Executing stitch.......")
     curr_dir = os.getcwd()

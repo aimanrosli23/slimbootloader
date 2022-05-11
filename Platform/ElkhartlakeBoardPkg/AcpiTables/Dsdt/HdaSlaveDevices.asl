@@ -40,6 +40,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_0 | V_HDA_SNDW_DID_REALTEK_ALC701)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #1 on Controller #1 (Realtek ALC701)
@@ -49,6 +50,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_1 | V_HDA_SNDW_DID_REALTEK_ALC701)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #2 on Controller #2 (Realtek ALC701)
@@ -58,6 +60,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_2 | V_HDA_SNDW_DID_REALTEK_ALC701)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #3 on Controller #3 (Realtek ALC701)
@@ -67,6 +70,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_3 | V_HDA_SNDW_DID_REALTEK_ALC701)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #4 on Controller #0 (Realtek ALC700)
@@ -76,6 +80,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_0 | V_HDA_SNDW_DID_REALTEK_ALC700)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #5 on Controller #1 (Realtek ALC700)
@@ -85,6 +90,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_1 | V_HDA_SNDW_DID_REALTEK_ALC700)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #6 on Controller #2 (Realtek ALC700)
@@ -94,6 +100,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_2 | V_HDA_SNDW_DID_REALTEK_ALC700)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 
   // SoundWire Device #7 on Controller #3 (Realtek ALC700)
@@ -103,6 +110,7 @@ Scope(\_SB.PC00.HDAS.SNDW)
     Method (_ADR, 0) {
       Return (V_HDA_SNDW_LINK_ID_3 | V_HDA_SNDW_DID_REALTEK_ALC700)
     }
+    Include ("HdaSoundWireCodec.asl")
   }
 } // END SCOPE SNDW
 

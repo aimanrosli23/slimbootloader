@@ -79,7 +79,7 @@ Scope (\_SB)
 
     Method(_STA,0)
     {
-      If (CondRefOf (\_SB.ECLT))
+      If (CondRefOf (\_SB.ECLT,Local0))
       {
         Store(1, ECPR)
       } Else {

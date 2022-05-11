@@ -39,7 +39,6 @@ class Board(BaseBoard):
         self.PCI_IO_BASE          = 0x00002000
         self.PCI_MEM32_BASE       = 0x80000000
         self.ACPI_PM_TIMER_BASE   = 0x1808
-        self.ACPI_PROCESSOR_ID_BASE = 0
 
         self.FLASH_BASE_ADDRESS   = 0xFF000000
         self.FLASH_BASE_SIZE      = (self.FLASH_LAYOUT_START - self.FLASH_BASE_ADDRESS)
@@ -75,12 +74,7 @@ class Board(BaseBoard):
             self.POSC_SIZE = 0x00028000
             self.SIIPFW_SIZE += self.POSC_SIZE
 
-        bins = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Binaries')
-        if os.path.exists(os.path.join(bins, 'PseFw.bin')):
-            self.ENABLE_PSEFW_LOADING = 1
-        else:
-            self.ENABLE_PSEFW_LOADING = 0
-
+        self.ENABLE_PSEFW_LOADING = 1
         if self.ENABLE_PSEFW_LOADING:
             self.PSEF_SIZE = 0x00030000
             self.SIIPFW_SIZE += self.PSEF_SIZE
@@ -191,7 +185,7 @@ class Board(BaseBoard):
         # for test purpose. Based on the platform id, relevant data is populated for each platform.
         self._generated_cfg_file_prefix = 'Autogen_'
         self._CFGDATA_INT_FILE = []
-        self._CFGDATA_EXT_FILE = [self._generated_cfg_file_prefix + 'CfgData_Int_IotgRvp1.dlt', self._generated_cfg_file_prefix + 'CfgData_Ext_IotgCrb.dlt', self._generated_cfg_file_prefix + 'CfgData_Ext_Up6000.dlt']
+        self._CFGDATA_EXT_FILE = [self._generated_cfg_file_prefix + 'CfgData_Int_IotgRvp1.dlt', self._generated_cfg_file_prefix + 'CfgData_Ext_IotgCrb.dlt']
 
     def PlatformBuildHook (self, build, phase):
         if phase == 'pre-build:before':

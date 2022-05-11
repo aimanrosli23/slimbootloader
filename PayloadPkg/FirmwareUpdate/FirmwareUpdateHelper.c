@@ -1,7 +1,7 @@
 /** @file
   Internal functions to update firmware in boot media.
 
-  Copyright (c) 2020 - 2021, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2020, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -19,8 +19,6 @@
 #include <Library/DecompressLib.h>
 #include <Library/ConfigDataLib.h>
 #include <Library/LiteFvLib.h>
-#include <Library/ConsoleOutLib.h>
-#include <Library/TimerLib.h>
 #include "FirmwareUpdateHelper.h"
 #include <Service/SpiFlashService.h>
 
@@ -115,7 +113,7 @@ BootMediaReadByType (
 }
 
 /**
-  This function writes blocks to the SPI device.
+  This function writes blocks from the SPI device.
 
   @param[in]   Address            The block address in the FlashRegionAll to read from on the SPI.
   @param[in]   ByteCount          Size of the Buffer in bytes.
@@ -135,31 +133,6 @@ BootMediaWrite (
 {
   return mFwuSpiService->SpiWrite (FlashRegionBios, (UINT32)Address, ByteCount, Buffer);
 }
-
-/**
-  This function writes blocks to the SPI device based on flash region type.
-
-  @param[in] FlashRegionType      The Flash Region type for flash cycle which is listed in the Descriptor.
-  @param[in]  Address             The block address in the FlashRegionAll to read from on the SPI.
-  @param[in]  ByteCount           Size of the Buffer in bytes.
-  @param[out] Buffer              Pointer to caller-allocated buffer containing the data received during the SPI cycle.
-
-  @retval EFI_SUCCESS             Write completes successfully.
-  @retval others                  Device error, the command aborts abnormally.
-
-**/
-EFI_STATUS
-EFIAPI
-BootMediaWriteByType (
-  IN     FLASH_REGION_TYPE  FlashRegionType,
-  IN     UINT64             Address,
-  IN     UINT32             ByteCount,
-  OUT    UINT8              *Buffer
-  )
-{
-  return mFwuSpiService->SpiWrite (FlashRegionType, (UINT32)Address, ByteCount, Buffer);
-}
-
 
 /**
   This function erases blocks from the SPI device.
@@ -427,16 +400,16 @@ UpdateBootRegion (
         UpdateBlockSize = SIZE_64KB;
       }
     }
-    ConsolePrint ("Updating 0x%08llx, Size:0x%06x\n", UpdateAddress, UpdateBlockSize);
+    DEBUG ((DEBUG_INIT, "Updating 0x%08llx, Size:0x%05x\n", UpdateAddress, UpdateBlockSize));
     Status = UpdateRegionBlock (UpdateAddress, Buffer, UpdateBlockSize);
     if (EFI_ERROR (Status)) {
-      ConsolePrint ("\nFailed at address 0x%08llx, status: %r\n", UpdateAddress, Status);
+      DEBUG ((DEBUG_ERROR, "\nFailed! Address=0x%08llx, Status = %r\n", UpdateAddress, Status));
       return Status;
     }
     UpdateAddress += UpdateBlockSize;
     Buffer        += UpdateBlockSize;
     UpdatedSize   += UpdateBlockSize;
-    ConsolePrint ("\nFinished   %3d%%\n", (WrittenSize + UpdatedSize) * 100 / TotalSize);
+    DEBUG ((DEBUG_INIT, "\nFinished   %3d%%\n", (WrittenSize + UpdatedSize) * 100 / TotalSize));
   }
 
   return EFI_SUCCESS;
@@ -457,8 +430,7 @@ UpdateBootPartition (
 {
   EFI_STATUS                     Status;
   UINT32                         Index;
-  FIRMWARE_UPDATE_REGION        *UpdateRegion;
-  FIRMWARE_UPDATE_REGION         TempRegion;
+  FIRMWARE_UPDATE_REGION         *UpdateRegion;
   UINT32                         TotalUpdateSize;
   UINT32                         WrittenSize;
 
@@ -476,59 +448,15 @@ UpdateBootPartition (
 
   WrittenSize = 0;
   for (Index = 0; Index < UpdatePartition->RegionCount; Index++) {
-    // Adjust the offset to be relative to BIOS region start
-    CopyMem (&TempRegion, &UpdatePartition->FwRegion[Index], sizeof(FIRMWARE_UPDATE_REGION));
-    TempRegion.ToUpdateAddress += GetRomImageOffsetInBiosRegion ();
-    Status = UpdateBootRegion (&TempRegion, WrittenSize, TotalUpdateSize);
+    UpdateRegion = &UpdatePartition->FwRegion[Index];
+    Status = UpdateBootRegion (UpdateRegion, WrittenSize, TotalUpdateSize);
     if (EFI_ERROR (Status)) {
       DEBUG ((DEBUG_ERROR, "UpdateBootRegion failed! Status = 0x%x\n", Status));
       return Status;
     }
-    WrittenSize += TempRegion.UpdateSize;
+    WrittenSize += UpdateRegion->UpdateSize;
   }
 
-  return Status;
-}
-
-/**
-  Perform full BIOS region update.
-
-  @param[in] ImageHdr       Pointer to fw mgmt capsule Image header
-
-  @retval  EFI_SUCCESS      Update successful.
-  @retval  other            error occurred during firmware update
-**/
-EFI_STATUS
-UpdateFullBiosRegion (
-  IN EFI_FW_MGMT_CAP_IMAGE_HEADER  *ImageHdr
-  )
-{
-  EFI_STATUS               Status;
-  UINT32                   BiosRgnBase;
-  UINT32                   BiosRgnSize;
-  FIRMWARE_UPDATE_REGION   UpdateRegion;
-
-  DEBUG((DEBUG_INFO, "Update full BIOS region\n"));
-  Status = BootMediaGetRegion (FlashRegionBios, &BiosRgnBase, &BiosRgnSize);
-  if (!EFI_ERROR (Status)) {
-    if (ImageHdr->UpdateImageSize > BiosRgnSize) {
-      DEBUG((DEBUG_ERROR, "BIOS image in capsule is bigger than BIOS region on flash\n"));
-      Status = EFI_UNSUPPORTED;
-    }
-  }
-  if (ALIGN_DOWN(ImageHdr->UpdateImageSize, SIZE_4KB) != ImageHdr->UpdateImageSize) {
-    DEBUG((DEBUG_ERROR, "BIOS image size in capsule is not 4KB aligned\n"));
-    Status = EFI_UNSUPPORTED;
-  }
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  ZeroMem (&UpdateRegion, sizeof(UpdateRegion));
-  UpdateRegion.ToUpdateAddress = BiosRgnSize - ImageHdr->UpdateImageSize;
-  UpdateRegion.UpdateSize      = ImageHdr->UpdateImageSize;
-  UpdateRegion.SourceAddress   = (UINT8 *)((UINTN)ImageHdr + sizeof(EFI_FW_MGMT_CAP_IMAGE_HEADER));
-  Status = UpdateBootRegion (&UpdateRegion, 0, UpdateRegion.UpdateSize);
   return Status;
 }
 
@@ -756,16 +684,13 @@ UpdateContainerComp (
   //
   ComponentBase = ContainerEntryPtr->Base + ContainerHdr->DataOffset + ComponentEntryPtr->Offset;
 
-  // Current implementation only supports compressed header.
-  // Exception: Signature is zero as a mark for previously detected bad region, e.g., TCCT
+  // Check Svn for container component
   FlashCompLzHeader = (LOADER_COMPRESSED_HEADER *) (UINTN) ComponentBase;
   CapCompLzHeader   = (LOADER_COMPRESSED_HEADER *) ((UINTN)ImageHdr + sizeof(EFI_FW_MGMT_CAP_IMAGE_HEADER));
-  if (((IS_COMPRESSED (FlashCompLzHeader) == FALSE) && (FlashCompLzHeader->Signature != 0)) ||
-      (IS_COMPRESSED (CapCompLzHeader) == FALSE)) {
+  if ((IS_COMPRESSED (FlashCompLzHeader) == FALSE) || (IS_COMPRESSED (CapCompLzHeader) == FALSE)) {
     return EFI_UNSUPPORTED;
   }
 
-  // Check Svn for container component
   if (CapCompLzHeader->Svn < FlashCompLzHeader->Svn) {
     DEBUG((DEBUG_INFO, "Container Component svn did not met!"));
     return EFI_UNSUPPORTED;
@@ -1041,21 +966,4 @@ UpdateSblComponent (
   }
 
   return Status;
-}
-
-/**
-  Reboot platform.
-
-  @param[in]  ResetType   Cold, Warm or Shutdown
-
-**/
-VOID
-Reboot (
-  IN  EFI_RESET_TYPE        ResetType
-  )
-{
-  ConsolePrint("Reset required to proceed.\n\n");
-  MicroSecondDelay (3000000);
-  ResetSystem (ResetType);
-  CpuDeadLoop ();
 }

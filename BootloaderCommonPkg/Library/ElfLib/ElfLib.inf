@@ -25,9 +25,6 @@
   Elf64.h
   ElfLibInternal.h
   ElfLib.c
-  Elf32Lib.c
-  Elf64Lib.c
-
 
 [Packages]
   MdePkg/MdePkg.dec

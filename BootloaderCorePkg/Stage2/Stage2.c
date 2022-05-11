@@ -148,10 +148,7 @@ NormalBootPath (
   UINT8                          *CmdLine;
   UINT32                          CmdLineLen;
   UINT32                          UefiSig;
-  UINT32                          HobSize;
   UINT16                          PldMachine;
-  LOADED_PAYLOAD_INFO             PayloadInfo;
-  UNIVERSAL_PAYLOAD_EXTRA_DATA   *PldImgInfo;
 
   LdrGlobal = (LOADER_GLOBAL_DATA *)GetLoaderGlobalDataPointer();
 
@@ -185,25 +182,10 @@ NormalBootPath (
     DEBUG ((DEBUG_INFO, "FV Format Payload\n"));
     UefiSig = Dst[0];
     Status  = LoadFvImage (Dst, Stage2Param->PayloadActualLength, (VOID **)&PldEntry, &PldMachine);
-  } else if (IsElfFormat ((CONST UINT8 *)Dst)) {
-    DEBUG ((DEBUG_INFO, "ELF Format Payload\n"));
-    // Assume Universal Payload first
-    ZeroMem (&PayloadInfo, sizeof(PayloadInfo));
-    Status = LoadElfPayload (Dst, &PayloadInfo);
+  } else if (IsElfImage (Dst)) {
+    Status = GetElfMachine (Dst, &PldMachine);
     if (!EFI_ERROR(Status)) {
-      if (PayloadInfo.Info.Identifier == UNIVERSAL_PAYLOAD_IDENTIFIER) {
-        DEBUG ((DEBUG_INFO, "Universal Payload %a v%08X\n", PayloadInfo.Info.ImageId, PayloadInfo.Info.Revision));
-        HobSize    = sizeof (UNIVERSAL_PAYLOAD_EXTRA_DATA) + sizeof(UNIVERSAL_PAYLOAD_EXTRA_DATA_ENTRY) * PayloadInfo.ImageCount;
-        PldImgInfo = (UNIVERSAL_PAYLOAD_EXTRA_DATA *)BuildGuidHob (&gUniversalPayloadExtraDataGuid, HobSize);
-        if (PldImgInfo != NULL) {
-          ZeroMem (PldImgInfo, HobSize);
-          PldImgInfo->Header.Revision = 0;
-          PldImgInfo->Count = PayloadInfo.ImageCount;
-          CopyMem (&PldImgInfo->Entry[0], &PayloadInfo.LoadedImage, sizeof(UNIVERSAL_PAYLOAD_EXTRA_DATA_ENTRY) * PayloadInfo.ImageCount);
-        }
-      }
-      PldMachine = (UINT16)PayloadInfo.Machine;
-      PldEntry   = (PAYLOAD_ENTRY)PayloadInfo.EntryPoint;
+      Status = LoadElfImage (Dst, (VOID *)&PldEntry);
     }
   } else {
     if (FeaturePcdGet (PcdLinuxPayloadEnabled)) {
@@ -405,11 +387,6 @@ SecStartup (
   // Deallocate temporary memory used by previous stage
   FreeTemporaryMemory (NULL);
 
-  if (IS_X64) {
-    // Build full physical space 1:1 mapping page table
-    CreateIdentityMappingPageTables (0);
-  }
-
   // Init all services
   InitializeService ();
 
@@ -498,18 +475,6 @@ SecStartup (
   }
   ASSERT_EFI_ERROR (Status);
 
-  //
-  // Allocate SMBIOS tables' memory, set Base and call Smbios init
-  //
-  if (FixedPcdGetBool (PcdSmbiosEnabled)) {
-    SmbiosEntry = AllocateZeroPool (PcdGet16(PcdSmbiosTablesSize));
-    Status = PcdSet32S (PcdSmbiosTablesBase, (UINT32)(UINTN)SmbiosEntry);
-    Status = SmbiosInit ();
-    if (EFI_ERROR(Status)) {
-      DEBUG ((DEBUG_INFO, "SMBIOS init Status = %r\n", Status));
-    }
-  }
-
   // PCI Enumeration
   BoardInit (PrePciEnumeration);
   AddMeasurePoint (0x3090);
@@ -519,7 +484,7 @@ SecStartup (
     DEBUG ((DEBUG_INIT, "PCI Enum\n"));
     Status = PciEnumeration (MemPool);
     AddMeasurePoint (0x30A0);
-    UpdateGraphicsHob ();
+
     BoardInit (PostPciEnumeration);
     AddMeasurePoint (0x30B0);
 
@@ -572,6 +537,18 @@ SecStartup (
     }
   }
 
+  //
+  // Allocate SMBIOS tables' memory, set Base and call Smbios init
+  //
+  if (FixedPcdGetBool (PcdSmbiosEnabled)) {
+    SmbiosEntry = AllocateZeroPool (PcdGet16(PcdSmbiosTablesSize));
+    Status = PcdSet32S (PcdSmbiosTablesBase, (UINT32)(UINTN)SmbiosEntry);
+    Status = SmbiosInit ();
+    if (EFI_ERROR(Status)) {
+      DEBUG ((DEBUG_INFO, "SMBIOS init Status = %r\n", Status));
+    }
+  }
+
   PlatformService = (PLATFORM_SERVICE *) GetServiceBySignature (PLATFORM_SERVICE_SIGNATURE);
   if (PlatformService != NULL) {
     PlatformService->ResetSystem = ResetSystem;
@@ -585,11 +562,6 @@ SecStartup (
     DEBUG ((DEBUG_INFO, "Enable SMRR\n"));
     SendSmiIpiAllExcludingSelf ();
     SendSmiIpi (GetApicId());
-  }
-
-  // Finalize Smbios (add Type127 and cheksum)
-  if (FixedPcdGetBool (PcdSmbiosEnabled)) {
-    FinalizeSmbios ();
   }
 
   // Continue boot flow
