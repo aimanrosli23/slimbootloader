@@ -74,10 +74,12 @@
 #include <Library/HeciInitLib.h>
 #include <TccConfigSubRegions.h>
 #include <Library/TccLib.h>
+#include <Library/WatchDogTimerLib.h>
 #include <Library/MeExtMeasurementLib.h>
 #include <GpioConfig.h>
 #include <Register/RegsSpi.h>
 #include <Library/GpioLib.h>
+#include <Library/PlatformHookLib.h>
 
 BOOLEAN mTccDsoTuning      = FALSE;
 UINT8   mTccRtd3Support    = 0;
@@ -697,6 +699,9 @@ BoardInit (
     Status = PcdSet32S (PcdAcpiTableTemplatePtr, (UINT32)(UINTN)mPlatformAcpiTables);
     break;
   case PostSiliconInit:
+    if (IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
+      WdtDisable (WDT_FLAG_TCC_DSO_IN_PROGRESS);
+    }
     // Set TSEG base/size PCD
     TsegBase = MmioRead32 (TO_MM_PCI_ADDRESS (0x00000000) + TSEG) & ~0xF;
     TsegSize = MmioRead32 (TO_MM_PCI_ADDRESS (0x00000000) + BGSM) & ~0xF;
@@ -847,6 +852,11 @@ TccModePostMemConfig (
   FspsUpd->FspsConfig.DsoTuningEn     = TccCfgData->TccTuning;
   FspsUpd->FspsConfig.TccErrorLogEn   = TccCfgData->TccErrorLog;
   FspsUpd->FspsConfig.IfuEnable       = 0;
+  if (!IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
+    DEBUG ((DEBUG_INFO, "DSO Tuning skipped.\n"));
+    FspsUpd->FspsConfig.TccStreamCfgStatus = 1;
+  } else if (TccCfgData->TccTuning != 0) {
+    WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
 
 // Load TCC stream config from container
   TccStreamBase = NULL;
@@ -861,7 +871,6 @@ TccModePostMemConfig (
     DEBUG ((DEBUG_INFO, "Load tcc stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
 
     // Update UPD from stream
-    if (TccCfgData->TccTuning != 0) {
       StreamConfig   = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
       FspsUpd->FspsConfig.Eist                       = PolicyConfig->Pstates;
@@ -972,7 +981,7 @@ FspUpdatePsePolicy (
   Fspscfg->PchPseLogOutputOffset  = SiCfgData->PchPseLogOutputOffset;
   Fspscfg->PchPseEcliteEnabled    = 1;
   Fspscfg->PchPseOobEnabled       = 0;
-  Fspscfg->PchCpuTempSensorEnable = 1;
+  Fspscfg->CpuTempSensorReadEnable = 1;
   Fspscfg->PchPseWoLEnabled       = 1;
 
   //Fspscfg->PseJtagEnabled       = 0;
@@ -982,6 +991,9 @@ FspUpdatePsePolicy (
     Fspscfg->PchPseI2sEnable[Index]              = SiCfgData->PchPseI2sEnable[Index];
     Fspscfg->PchPseI2sSbInterruptEnable[Index]   = SiCfgData->PchPseI2sSbInterruptEnable[Index];
   }
+  for (Index = 0; Index < GetPchMaxPsePWMNum (); Index++){
+    Fspscfg->PchPsePwmPinEnable[Index] = SiCfgData->PchPsePwmPinEnable[Index];
+  }
   Fspscfg->PchPseI2sTxPinMux[0]            = GPIO_VER3_MUXING_PSE_I2S0_TXD_GPP_E16;
   Fspscfg->PchPseI2sRxPinMux[0]            = GPIO_VER3_MUXING_PSE_I2S0_RXD_GPP_E15;
   Fspscfg->PchPseI2sSfrmPinMux[0]          = GPIO_VER3_MUXING_PSE_I2S0_SFRM_GPP_E21;
@@ -989,7 +1001,6 @@ FspUpdatePsePolicy (
 
   Fspscfg->PchPsePwmEnable            = SiCfgData->PchPsePwmEnable;
   Fspscfg->PchPsePwmSbInterruptEnable = SiCfgData->PchPsePwmSbInterruptEnable;
-  Fspscfg->PchPsePwmPinEnable[15]     = 0x1;
 
   Fspscfg->PchPsePwmPinMux[8]         = GPIO_VER3_MUXING_PSE_PWM_08_GPP_E4;
   Fspscfg->PchPsePwmPinMux[9]         = GPIO_VER3_MUXING_PSE_PWM_09_GPP_E5;
@@ -1100,11 +1111,13 @@ UpdateFspConfig (
   FSP_S_CONFIG       *Fspscfg;
   SILICON_CFG_DATA   *SiCfgData;
   POWER_CFG_DATA     *PowerCfgData;
+  MEMORY_CFG_DATA    *MemCfgData;
   UINT8              SaDisplayConfigTable[17] = { 0 };
 
   FspsUpd    = (FSPS_UPD *)FspsUpdPtr;
   Fspscfg     = &FspsUpd->FspsConfig;
   SiCfgData = (SILICON_CFG_DATA *)FindConfigDataByTag (CDATA_SILICON_TAG);
+  MemCfgData = (MEMORY_CFG_DATA *)FindConfigDataByTag (CDATA_MEMORY_TAG);
   if (SiCfgData == NULL) {
     DEBUG ((DEBUG_INFO, "Failed to find Silicon CFG!\n"));
   }
@@ -1532,13 +1545,24 @@ UpdateFspConfig (
     // PCH_TSN_CONFIG
     Fspscfg->PchTsnEnable         = SiCfgData->PchTsnEnable;
     Fspscfg->PchTsnGbeLinkSpeed   = SiCfgData->TsnLinkSpeed;
-    Fspscfg->PchTsnGbeSgmiiEnable    = 1;
+    Fspscfg->PchTsnGbeSgmiiEnable = (UINT8)SiCfgData->PchTsnGbeSgmiiEnable;
 
     // PSE_TSN_CONFIG
-    Fspscfg->PseTsnGbeSgmiiEnable[0] = 0;
-    Fspscfg->PseTsnGbeSgmiiEnable[1] = 0;
-    Fspscfg->PseTsnGbePhyInterfaceType[0]    = 1;
-    Fspscfg->PseTsnGbePhyInterfaceType[1]    = 1;
+    Fspscfg->PseTsnGbeSgmiiEnable[0]         = (UINT8)SiCfgData->PseTsnGbe0SgmiiEnable;
+    Fspscfg->PseTsnGbeSgmiiEnable[1]         = (UINT8)SiCfgData->PseTsnGbe1SgmiiEnable;
+    Fspscfg->PseTsnGbePhyInterfaceType[0]    = (UINT8)SiCfgData->PseTsnGbe0PhyInterfaceType;
+    Fspscfg->PseTsnGbePhyInterfaceType[1]    = (UINT8)SiCfgData->PseTsnGbe1PhyInterfaceType;
+    DEBUG ((DEBUG_VERBOSE, "------------------------------------------PCH and PSE TSN CONFIG----------------------------------------\n"));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->TsnConfigBase: 0x%x\n",Fspscfg->TsnConfigBase));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->TsnConfigSize: 0x%x\n",Fspscfg->TsnConfigSize));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PchTsnEnable: 0x%x\n",Fspscfg->PchTsnEnable));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PchTsnGbeLinkSpeed: 0x%x\n",Fspscfg->PchTsnGbeLinkSpeed));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PchTsnGbeSgmiiEnable: 0x%x\n",Fspscfg->PchTsnGbeSgmiiEnable));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbeSgmiiEnable[0]: 0x%x\n",Fspscfg->PseTsnGbeSgmiiEnable[0]));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbeSgmiiEnable[1]: 0x%x\n",Fspscfg->PseTsnGbeSgmiiEnable[1]));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbePhyInterfaceType[0]: 0x%x\n",Fspscfg->PseTsnGbePhyInterfaceType[0]));
+    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbePhyInterfaceType[1]: 0x%x\n",Fspscfg->PseTsnGbePhyInterfaceType[1]));
+    DEBUG ((DEBUG_VERBOSE, "------------------------------------------------END-----------------------------------------------------\n"));
 
     // AMT_ME_CONFIG
     Fspscfg->AmtEnabled           = SiCfgData->AmtEnabled;
@@ -1597,7 +1621,11 @@ UpdateFspConfig (
 
   if (mPchSciSupported) {
     Fspscfg->IsFusaSupported = 0x1;
-    Fspscfg->IehMode = 0x1;
+    if (MemCfgData != NULL) {
+        if (MemCfgData->IbeccErrorInj != 0x1){
+            Fspscfg->IehMode = 0x1;
+        }
+    }
     //
     // PchPse*Enable UPDs should be set to to 0x2 for
     // host ownership; set to 1 for PSE ownership.
@@ -1606,7 +1634,6 @@ UpdateFspConfig (
   }
 
   // W/A for Yocto boot issue
-  Fspscfg->AcSplitLock = 0x0;
 
   PowerCfgData = (POWER_CFG_DATA *) FindConfigDataByTag (CDATA_POWER_TAG);
   if (PowerCfgData == NULL) {

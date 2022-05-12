@@ -158,7 +158,7 @@ def get_xml_change_list (platform, plt_params_list, stitch_dir):
       # Path                                                                            | value |
       # =========================================================================================
       #Region Order
-      ('./BuildSettings/BuildResults/RegionOrder',                                 '421'),
+      ('./BuildSettings/BuildResults/RegionOrder',                                 '4521'),
       ('./FlashLayout/DescriptorRegion/OemBinary',                                 '$SourceDir\OemBinary.bin'),
       ('./FlashLayout/BiosRegion/InputFile',                                       '$SourceDir\BiosRegion.bin'),
       ('./FlashLayout/Ifwi_IntelMePmcRegion/MeRegionFile',                         '$SourceDir\MeRegionFile.bin'),
