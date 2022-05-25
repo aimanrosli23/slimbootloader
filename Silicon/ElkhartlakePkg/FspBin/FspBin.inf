@@ -7,20 +7,3 @@
 #
 #
 ##
-
-
-[UserExtensions.SBL."CloneRepo"]
-  REPO    = https://github.com/intel/FSP.git
-  COMMIT  = 86ba5c21544bba714586356c6d0caa6f46a4e8e4
-
-[UserExtensions.SBL."CopyList"]
-  ElkhartLakeFspBinPkg/FspBin/FSPRel.bin               : Silicon/ElkhartlakePkg/FspBin/FspDbg.bin
-  ElkhartLakeFspBinPkg/FspBin/FSPRel.bin               : Silicon/ElkhartlakePkg/FspBin/FspRel.bin
-  ElkhartLakeFspBinPkg/FspBin/FSP.bsf                  : Silicon/ElkhartlakePkg/FspBin/Fsp.bsf
-  ElkhartLakeFspBinPkg/Include/FspUpd.h                : Silicon/ElkhartlakePkg/Include/FspUpd.h
-  ElkhartLakeFspBinPkg/Include/FsptUpd.h               : Silicon/ElkhartlakePkg/Include/FsptUpd.h
-  ElkhartLakeFspBinPkg/Include/FspmUpd.h               : Silicon/ElkhartlakePkg/Include/FspmUpd.h
-  ElkhartLakeFspBinPkg/Include/FspsUpd.h               : Silicon/ElkhartlakePkg/Include/FspsUpd.h
-  ElkhartLakeFspBinPkg/Include/MemInfoHob.h            : Silicon/ElkhartlakePkg/Include/MemInfoHob.h
-  ElkhartLakeFspBinPkg/VbtBin/Vbt.bin                  : Platform/ElkhartlakeBoardPkg/VbtBin/Vbt.dat
-  ElkhartLakeFspBinPkg/VbtBin/Vbt.bsf                  : Platform/ElkhartlakeBoardPkg/VbtBin/Vbt.bsf

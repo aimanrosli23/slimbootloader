@@ -1,0 +1,590 @@
+From bb4ccc098be14de914dc8afee9f542e24e7f5422 Mon Sep 17 00:00:00 2001
+From: Ong Kok Tong <kok.tong.ong@intel.com>
+Date: Fri, 8 Apr 2022 11:38:49 +0800
+Subject: [PATCH] [EHL] MR3 RC6 patch release
+
+Changelog:
+1. FSP update to hash 72266f6523286fb3494f5b2553ace612d1dc95c4
+2. Microcode update 6996a45d7f4014fd4aa0f1eb4cbe97d8a3c5957a
+3. Enabled TCC DSO resiliency feature
+4. Imported watchdog timer library
+5. Fixed IBECC error injection issue
+6. Updated PSEFW size to 0x00030000
+
+Signed-off-by: Ong Kok Tong <kok.tong.ong@intel.com>
+---
+ Platform/ElkhartlakeBoardPkg/BoardConfig.py   | 13 ++--
+ .../CfgData/CfgData_Silicon.yaml              | 42 +++++++++-
+ .../Stage1BBoardInitLib/Stage1BBoardInitLib.c | 14 +++-
+ .../Stage1BBoardInitLib.inf                   |  2 +
+ .../Stage2BoardInitLib/Stage2BoardInitLib.c   | 47 ++++++++---
+ .../Stage2BoardInitLib/Stage2BoardInitLib.inf |  1 +
+ .../Script/StitchIfwiConfig.py                |  2 +-
+ Silicon/CommonSocPkg/Include/Library/TccLib.h | 27 +++++++
+ Silicon/CommonSocPkg/Library/TccLib/TccLib.c  | 78 +++++++++++++++++++
+ .../CommonSocPkg/Library/TccLib/TccLib.inf    |  2 +
+ Silicon/ElkhartlakePkg/FspBin/FspBin.inf      |  2 +-
+ .../Include/Library/PchInfoLib.h              |  8 ++
+ .../Library/PchInfoLib/PchInfoLib.c           |  7 ++
+ .../ElkhartlakePkg/Microcode/Microcode.inf    |  6 +-
+ 14 files changed, 227 insertions(+), 24 deletions(-)
+
+diff --git a/Platform/ElkhartlakeBoardPkg/BoardConfig.py b/Platform/ElkhartlakeBoardPkg/BoardConfig.py
+index bc1d436a..8542bc44 100644
+--- a/Platform/ElkhartlakeBoardPkg/BoardConfig.py
++++ b/Platform/ElkhartlakeBoardPkg/BoardConfig.py
+@@ -26,7 +26,7 @@ class Board(BaseBoard):
+         # VERINFO_PROJ_MAJOR_VER: 1 PV Quality release
+         # VERINFO_PROJ_MINOR_VER: 0: PV  1: MR1  2: MR2 etc.
+         self.VERINFO_PROJ_MAJOR_VER = 1
+-        self.VERINFO_PROJ_MINOR_VER = 2
++        self.VERINFO_PROJ_MINOR_VER = 3
+         self.VERINFO_SVN          = 1
+         self.VERINFO_BUILD_DATE   = time.strftime("%m/%d/%Y")
+         self.LOWEST_SUPPORTED_FW_VER = ((self.VERINFO_PROJ_MAJOR_VER << 8) + self.VERINFO_PROJ_MINOR_VER)
+@@ -76,7 +76,7 @@ class Board(BaseBoard):
+ 
+         self.ENABLE_PSEFW_LOADING = 1
+         if self.ENABLE_PSEFW_LOADING:
+-            self.PSEF_SIZE = 0x00020000
++            self.PSEF_SIZE = 0x00030000
+             self.SIIPFW_SIZE += self.PSEF_SIZE
+ 
+         if self.ENABLE_TSN:
+@@ -134,19 +134,19 @@ class Board(BaseBoard):
+         self.PAYLOAD_LOAD_HIGH    = 1
+         self.PAYLOAD_EXE_BASE     = 0x00B00000
+         self.PAYLOAD_SIZE         = 0x00020000
+-        self.EPAYLOAD_SIZE        = 0x00160000
++        self.EPAYLOAD_SIZE        = 0x00162000
+         self.UCODE_SIZE           = 0x00010000 if self.HAVE_FSP_BIN != 0 else 0
+         self.MRCDATA_SIZE         = 0x00008000
+         self.CFGDATA_SIZE         = 0x00004000
+         self.KEYHASH_SIZE         = 0x00001000
+-        self.CFG_DATABASE_SIZE    = self.CFGDATA_SIZE
++        self.CFG_DATABASE_SIZE    = self.CFGDATA_SIZE + 0x1000
+         self.VARIABLE_SIZE        = 0x00002000
+         if len(self._PAYLOAD_NAME.split(';')) > 1:
+             self.UEFI_VARIABLE_SIZE = 0x00040000
+         else:
+             self.UEFI_VARIABLE_SIZE = 0x00001000
+         self.SBLRSVD_SIZE         = 0x00001000
+-        self.FWUPDATE_SIZE        = 0x0001A000 if self.ENABLE_FWU else 0
++        self.FWUPDATE_SIZE        = 0x0001B000 if self.ENABLE_FWU else 0
+ 
+         self.TOP_SWAP_SIZE        = 0x080000
+         self.REDUNDANT_SIZE       = 0x360000
+@@ -229,7 +229,8 @@ class Board(BaseBoard):
+             'SmbusLib|Silicon/CommonSocPkg/Library/SmbusLib/SmbusLib.inf',
+             'PsdLib|Silicon/$(SILICON_PKG_NAME)/Library/PsdLib/PsdLib.inf',
+             'HeciInitLib|Silicon/$(SILICON_PKG_NAME)/Library/HeciInitLib/HeciInitLib.inf',
+-            'MeExtMeasurementLib|Silicon/$(SILICON_PKG_NAME)/Library/MeExtMeasurementLib/MeExtMeasurementLib.inf'
++            'MeExtMeasurementLib|Silicon/$(SILICON_PKG_NAME)/Library/MeExtMeasurementLib/MeExtMeasurementLib.inf',
++            'WatchDogTimerLib|Silicon/CommonSocPkg/Library/WatchDogTimerLib/WatchDogTimerLib.inf',
+         ]
+ 
+         if self.BUILD_CSME_UPDATE_DRIVER:
+diff --git a/Platform/ElkhartlakeBoardPkg/CfgData/CfgData_Silicon.yaml b/Platform/ElkhartlakeBoardPkg/CfgData/CfgData_Silicon.yaml
+index f97a9377..2b3e5397 100644
+--- a/Platform/ElkhartlakeBoardPkg/CfgData/CfgData_Silicon.yaml
++++ b/Platform/ElkhartlakeBoardPkg/CfgData/CfgData_Silicon.yaml
+@@ -1758,7 +1758,7 @@
+       help         : >
+                      Enable/Disable #AC check on split lock. <b>0- Disable</b>; 1- Enable.
+       length       : 0x1
+-      value        : 0x1
++      value        : 0x0
+   - SgxSinitNvsData :
+       name         : SgxSinitNvsData
+       type         : EditNum, HEX, (0x0,0xFF)
+@@ -1867,11 +1867,49 @@
+                      When FALSE, it disables Timed GPIO 1.
+       length       : 1b
+       value        : 0x0
++  - PchTsnGbeSgmiiEnable :
++      name         : PCH TSN SGMII Support
++      type         : Combo
++      option       : $EN_DIS
++      help         : >
++                     Enable/disable PCH TSN SGMII support 0=Disable 1=Enable
++      length       : 1b
++      value        : 0x1
++  - PseTsnGbe0SgmiiEnable :
++      name         : PSE TSN 0 SGMII Support
++      type         : Combo
++      option       : $EN_DIS
++      help         : >
++                     Enable/disable PSE TSN 0 SGMII support 0=Disable 1=Enable
++      length       : 1b
++      value        : 0x00
++  - PseTsnGbe1SgmiiEnable :
++      name         : PSE TSN 1 SGMII Support
++      type         : Combo
++      option       : $EN_DIS
++      help         : >
++                     Enable/disable PSE TSN 1 SGMII support 0=Disable 1=Enable
++      length       : 1b
++      value        : 0x00
++  - PseTsnGbe0PhyInterfaceType :
++      name         : PSE TSN 0 Phy Interface Type
++      type         : EditNum, HEX, (0x00,0x3)
++      help         : >
++                     Set PSE TSN 0 Phy Interface Type 0: Not Connected, 1: RGMII, 2: SGMII, 3:SGMII+
++      length       : 2b
++      value        : 0x01
++  - PseTsnGbe1PhyInterfaceType :
++      name         : PSE TSN 1 Phy Interface Type
++      type         : EditNum, HEX, (0x00,0x3)
++      help         : >
++                     Set PSE TSN 1 Phy Interface Type 0: Not Connected, 1: RGMII, 2: SGMII, 3:SGMII+
++      length       : 2b
++      value        : 0x01
+   - Dummy        :
+       name         : SaPostMemTestRsvd
+       type         : Combo
+       option       : $EN_DIS
+       help         : >
+                      Reserved for SA Post-Mem Test
+-      length       : 22b
++      length       : 15b
+       value        : 0x0
+diff --git a/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.c b/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.c
+index a39c7770..b50002eb 100644
+--- a/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.c
++++ b/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.c
+@@ -21,6 +21,7 @@
+ #include <IndustryStandard/Pci30.h>
+ #include <Library/BootloaderCoreLib.h>
+ #include <Library/BoardSupportLib.h>
++#include <Library/SocInitLib.h>
+ #include <PchAccess.h>
+ #include <RegAccess.h>
+ #include <Library/CryptoLib.h>
+@@ -40,6 +41,8 @@
+ #include <Register/PmcRegs.h>
+ #include <GpioConfig.h>
+ #include <Library/GpioLib.h>
++#include <Library/WatchDogTimerLib.h>
++#include <Library/TccLib.h>
+ 
+ CONST PLT_DEVICE  mPlatformDevices[]= {
+   {{0x00001700}, OsBootDeviceSata  , 0 },
+@@ -186,6 +189,15 @@ TccModePreMemConfig (
+   FspmUpd->FspmConfig.DsoTuningEnPreMem      = TccCfgData->TccTuning;
+   FspmUpd->FspmConfig.TccErrorLogEnPreMem    = TccCfgData->TccErrorLog;
+ 
++  if (IsMarkedBadDso ()) {
++    DEBUG ((DEBUG_INFO, "Incorrect TCC tuning parameters. Platform rebooted with default values.\n"));
++    FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
++  } else if (IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS) && IsWdtTimeout()) {
++    WdtClearScratchpad (WDT_FLAG_TCC_DSO_IN_PROGRESS);
++    FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
++    InvalidateBadDso ();
++  } else if (TccCfgData->TccTuning != 0) {
++    WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
+   // Load TCC stream config from container
+   TccStreamBase = NULL;
+   TccStreamSize = 0;
+@@ -198,7 +210,6 @@ TccModePreMemConfig (
+     FspmUpd->FspmConfig.TccStreamCfgSizePreMem = TccStreamSize;
+     DEBUG ((DEBUG_INFO, "Load TCC stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
+ 
+-    if (TccCfgData->TccTuning != 0) {
+       StreamConfig = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
+       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
+ 
+@@ -867,6 +878,7 @@ RtcInit (
+ 
+   Bar     = MmioRead32 (MM_PCI_ADDRESS (0, PCI_DEVICE_NUMBER_PCH_PMC, PCI_FUNCTION_NUMBER_PCH_PMC, R_PMC_CFG_BASE)) & ~0x0F;
+   PmConf1 = MmioRead8 (Bar + R_PMC_PWRM_GEN_PMCON_B);
++  RtcRead (R_RTC_IO_REGA);
+ 
+   if ((PmConf1 & B_PMC_PWRM_GEN_PMCON_B_RTC_PWR_STS) != 0) {
+     DEBUG ((DEBUG_INFO, "Initialize RTC with default values\n"));
+diff --git a/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.inf b/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.inf
+index 39fd6e61..7e614d44 100644
+--- a/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.inf
++++ b/Platform/ElkhartlakeBoardPkg/Library/Stage1BBoardInitLib/Stage1BBoardInitLib.inf
+@@ -45,6 +45,8 @@
+   BoardSupportLib
+   SmbusLib
+   PchSciLib
++  WatchDogTimerLib
++  TccLib
+ 
+ [Guids]
+ 
+diff --git a/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.c b/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.c
+index 07bee419..4eaa25e0 100644
+--- a/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.c
++++ b/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.c
+@@ -74,10 +74,12 @@
+ #include <Library/HeciInitLib.h>
+ #include <TccConfigSubRegions.h>
+ #include <Library/TccLib.h>
++#include <Library/WatchDogTimerLib.h>
+ #include <Library/MeExtMeasurementLib.h>
+ #include <GpioConfig.h>
+ #include <Register/RegsSpi.h>
+ #include <Library/GpioLib.h>
++#include <Library/PlatformHookLib.h>
+ 
+ BOOLEAN mTccDsoTuning      = FALSE;
+ UINT8   mTccRtd3Support    = 0;
+@@ -697,6 +699,9 @@ BoardInit (
+     Status = PcdSet32S (PcdAcpiTableTemplatePtr, (UINT32)(UINTN)mPlatformAcpiTables);
+     break;
+   case PostSiliconInit:
++    if (IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
++      WdtDisable (WDT_FLAG_TCC_DSO_IN_PROGRESS);
++    }
+     // Set TSEG base/size PCD
+     TsegBase = MmioRead32 (TO_MM_PCI_ADDRESS (0x00000000) + TSEG) & ~0xF;
+     TsegSize = MmioRead32 (TO_MM_PCI_ADDRESS (0x00000000) + BGSM) & ~0xF;
+@@ -847,6 +852,11 @@ TccModePostMemConfig (
+   FspsUpd->FspsConfig.DsoTuningEn     = TccCfgData->TccTuning;
+   FspsUpd->FspsConfig.TccErrorLogEn   = TccCfgData->TccErrorLog;
+   FspsUpd->FspsConfig.IfuEnable       = 0;
++  if (!IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS)) {
++    DEBUG ((DEBUG_INFO, "DSO Tuning skipped.\n"));
++    FspsUpd->FspsConfig.TccStreamCfgStatus = 1;
++  } else if (TccCfgData->TccTuning != 0) {
++    WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
+ 
+ // Load TCC stream config from container
+   TccStreamBase = NULL;
+@@ -861,7 +871,6 @@ TccModePostMemConfig (
+     DEBUG ((DEBUG_INFO, "Load tcc stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
+ 
+     // Update UPD from stream
+-    if (TccCfgData->TccTuning != 0) {
+       StreamConfig   = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
+       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
+       FspsUpd->FspsConfig.Eist                       = PolicyConfig->Pstates;
+@@ -972,7 +981,7 @@ FspUpdatePsePolicy (
+   Fspscfg->PchPseLogOutputOffset  = SiCfgData->PchPseLogOutputOffset;
+   Fspscfg->PchPseEcliteEnabled    = 1;
+   Fspscfg->PchPseOobEnabled       = 0;
+-  Fspscfg->PchCpuTempSensorEnable = 1;
++  Fspscfg->CpuTempSensorReadEnable = 1;
+   Fspscfg->PchPseWoLEnabled       = 1;
+ 
+   //Fspscfg->PseJtagEnabled       = 0;
+@@ -982,6 +991,9 @@ FspUpdatePsePolicy (
+     Fspscfg->PchPseI2sEnable[Index]              = SiCfgData->PchPseI2sEnable[Index];
+     Fspscfg->PchPseI2sSbInterruptEnable[Index]   = SiCfgData->PchPseI2sSbInterruptEnable[Index];
+   }
++  for (Index = 0; Index < GetPchMaxPsePWMNum (); Index++){
++    Fspscfg->PchPsePwmPinEnable[Index] = SiCfgData->PchPsePwmPinEnable[Index];
++  }
+   Fspscfg->PchPseI2sTxPinMux[0]            = GPIO_VER3_MUXING_PSE_I2S0_TXD_GPP_E16;
+   Fspscfg->PchPseI2sRxPinMux[0]            = GPIO_VER3_MUXING_PSE_I2S0_RXD_GPP_E15;
+   Fspscfg->PchPseI2sSfrmPinMux[0]          = GPIO_VER3_MUXING_PSE_I2S0_SFRM_GPP_E21;
+@@ -989,7 +1001,6 @@ FspUpdatePsePolicy (
+ 
+   Fspscfg->PchPsePwmEnable            = SiCfgData->PchPsePwmEnable;
+   Fspscfg->PchPsePwmSbInterruptEnable = SiCfgData->PchPsePwmSbInterruptEnable;
+-  Fspscfg->PchPsePwmPinEnable[15]     = 0x1;
+ 
+   Fspscfg->PchPsePwmPinMux[8]         = GPIO_VER3_MUXING_PSE_PWM_08_GPP_E4;
+   Fspscfg->PchPsePwmPinMux[9]         = GPIO_VER3_MUXING_PSE_PWM_09_GPP_E5;
+@@ -1100,11 +1111,13 @@ UpdateFspConfig (
+   FSP_S_CONFIG       *Fspscfg;
+   SILICON_CFG_DATA   *SiCfgData;
+   POWER_CFG_DATA     *PowerCfgData;
++  MEMORY_CFG_DATA    *MemCfgData;
+   UINT8              SaDisplayConfigTable[17] = { 0 };
+ 
+   FspsUpd    = (FSPS_UPD *)FspsUpdPtr;
+   Fspscfg     = &FspsUpd->FspsConfig;
+   SiCfgData = (SILICON_CFG_DATA *)FindConfigDataByTag (CDATA_SILICON_TAG);
++  MemCfgData = (MEMORY_CFG_DATA *)FindConfigDataByTag (CDATA_MEMORY_TAG);
+   if (SiCfgData == NULL) {
+     DEBUG ((DEBUG_INFO, "Failed to find Silicon CFG!\n"));
+   }
+@@ -1532,13 +1545,24 @@ UpdateFspConfig (
+     // PCH_TSN_CONFIG
+     Fspscfg->PchTsnEnable         = SiCfgData->PchTsnEnable;
+     Fspscfg->PchTsnGbeLinkSpeed   = SiCfgData->TsnLinkSpeed;
+-    Fspscfg->PchTsnGbeSgmiiEnable    = 1;
++    Fspscfg->PchTsnGbeSgmiiEnable = (UINT8)SiCfgData->PchTsnGbeSgmiiEnable;
+ 
+     // PSE_TSN_CONFIG
+-    Fspscfg->PseTsnGbeSgmiiEnable[0] = 0;
+-    Fspscfg->PseTsnGbeSgmiiEnable[1] = 0;
+-    Fspscfg->PseTsnGbePhyInterfaceType[0]    = 1;
+-    Fspscfg->PseTsnGbePhyInterfaceType[1]    = 1;
++    Fspscfg->PseTsnGbeSgmiiEnable[0]         = (UINT8)SiCfgData->PseTsnGbe0SgmiiEnable;
++    Fspscfg->PseTsnGbeSgmiiEnable[1]         = (UINT8)SiCfgData->PseTsnGbe1SgmiiEnable;
++    Fspscfg->PseTsnGbePhyInterfaceType[0]    = (UINT8)SiCfgData->PseTsnGbe0PhyInterfaceType;
++    Fspscfg->PseTsnGbePhyInterfaceType[1]    = (UINT8)SiCfgData->PseTsnGbe1PhyInterfaceType;
++    DEBUG ((DEBUG_VERBOSE, "------------------------------------------PCH and PSE TSN CONFIG----------------------------------------\n"));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->TsnConfigBase: 0x%x\n",Fspscfg->TsnConfigBase));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->TsnConfigSize: 0x%x\n",Fspscfg->TsnConfigSize));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PchTsnEnable: 0x%x\n",Fspscfg->PchTsnEnable));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PchTsnGbeLinkSpeed: 0x%x\n",Fspscfg->PchTsnGbeLinkSpeed));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PchTsnGbeSgmiiEnable: 0x%x\n",Fspscfg->PchTsnGbeSgmiiEnable));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbeSgmiiEnable[0]: 0x%x\n",Fspscfg->PseTsnGbeSgmiiEnable[0]));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbeSgmiiEnable[1]: 0x%x\n",Fspscfg->PseTsnGbeSgmiiEnable[1]));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbePhyInterfaceType[0]: 0x%x\n",Fspscfg->PseTsnGbePhyInterfaceType[0]));
++    DEBUG ((DEBUG_VERBOSE, "Fspscfg->PseTsnGbePhyInterfaceType[1]: 0x%x\n",Fspscfg->PseTsnGbePhyInterfaceType[1]));
++    DEBUG ((DEBUG_VERBOSE, "------------------------------------------------END-----------------------------------------------------\n"));
+ 
+     // AMT_ME_CONFIG
+     Fspscfg->AmtEnabled           = SiCfgData->AmtEnabled;
+@@ -1597,7 +1621,11 @@ UpdateFspConfig (
+ 
+   if (mPchSciSupported) {
+     Fspscfg->IsFusaSupported = 0x1;
+-    Fspscfg->IehMode = 0x1;
++    if (MemCfgData != NULL) {
++        if (MemCfgData->IbeccErrorInj != 0x1){
++            Fspscfg->IehMode = 0x1;
++        }
++    }
+     //
+     // PchPse*Enable UPDs should be set to to 0x2 for
+     // host ownership; set to 1 for PSE ownership.
+@@ -1606,7 +1634,6 @@ UpdateFspConfig (
+   }
+ 
+   // W/A for Yocto boot issue
+-  Fspscfg->AcSplitLock = 0x0;
+ 
+   PowerCfgData = (POWER_CFG_DATA *) FindConfigDataByTag (CDATA_POWER_TAG);
+   if (PowerCfgData == NULL) {
+diff --git a/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.inf b/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.inf
+index a41da217..69403e2a 100644
+--- a/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.inf
++++ b/Platform/ElkhartlakeBoardPkg/Library/Stage2BoardInitLib/Stage2BoardInitLib.inf
+@@ -61,6 +61,7 @@
+   PsdLib
+   MeExtMeasurementLib
+   TccLib
++  WatchDogTimerLib
+ 
+ [Guids]
+   gOsConfigDataGuid
+diff --git a/Platform/ElkhartlakeBoardPkg/Script/StitchIfwiConfig.py b/Platform/ElkhartlakeBoardPkg/Script/StitchIfwiConfig.py
+index af8e0cc1..b8d896b6 100644
+--- a/Platform/ElkhartlakeBoardPkg/Script/StitchIfwiConfig.py
++++ b/Platform/ElkhartlakeBoardPkg/Script/StitchIfwiConfig.py
+@@ -158,7 +158,7 @@ def get_xml_change_list (platform, plt_params_list, stitch_dir):
+       # Path                                                                            | value |
+       # =========================================================================================
+       #Region Order
+-      ('./BuildSettings/BuildResults/RegionOrder',                                 '421'),
++      ('./BuildSettings/BuildResults/RegionOrder',                                 '4521'),
+       ('./FlashLayout/DescriptorRegion/OemBinary',                                 '$SourceDir\OemBinary.bin'),
+       ('./FlashLayout/BiosRegion/InputFile',                                       '$SourceDir\BiosRegion.bin'),
+       ('./FlashLayout/Ifwi_IntelMePmcRegion/MeRegionFile',                         '$SourceDir\MeRegionFile.bin'),
+diff --git a/Silicon/CommonSocPkg/Include/Library/TccLib.h b/Silicon/CommonSocPkg/Include/Library/TccLib.h
+index 585b8a62..0b8b32a3 100644
+--- a/Silicon/CommonSocPkg/Include/Library/TccLib.h
++++ b/Silicon/CommonSocPkg/Include/Library/TccLib.h
+@@ -28,4 +28,31 @@ UpdateAcpiRtctTable (
+   IN EFI_ACPI_DESCRIPTION_HEADER *RtctTable
+   );
+ 
++/**
++  Check if the TCC DSO is a bad binary by checking its signature.
++
++  @retval TRUE     TCC DSO was marked as a bad binary
++  @retval FALSE    TCC DSO was not found or not marked as a bad binary
++
++ */
++BOOLEAN
++EFIAPI
++IsMarkedBadDso (
++  VOID
++  );
++
++/**
++  Mark TCC DSO as a bad binary by changing its signature to 0.
++
++  @retval EFI_SUCCESS
++  @retval EFI_NOT_FOUND          Unable to find IPFW/TCCT
++  @retval Others                 Errors during SPI operations
++
++ */
++EFI_STATUS
++EFIAPI
++InvalidateBadDso (
++  VOID
++  );
++
+ #endif
+diff --git a/Silicon/CommonSocPkg/Library/TccLib/TccLib.c b/Silicon/CommonSocPkg/Library/TccLib/TccLib.c
+index 16c2b53c..3cd3d889 100644
+--- a/Silicon/CommonSocPkg/Library/TccLib/TccLib.c
++++ b/Silicon/CommonSocPkg/Library/TccLib/TccLib.c
+@@ -13,6 +13,8 @@
+ #include <Library/BootloaderCommonLib.h>
+ #include <Library/BootloaderCoreLib.h>
+ #include <Library/TccLib.h>
++#include <Library/SpiFlashLib.h>
++#include <Library/ContainerLib.h>
+ #include "TccRtctHob.h"
+ 
+ 
+@@ -82,3 +84,79 @@ UpdateAcpiRtctTable (
+   return EFI_SUCCESS;
+ }
+ 
++/**
++  Check if the TCC DSO is a bad binary by checking its signature.
++
++  @retval TRUE     TCC DSO was marked as a bad binary
++  @retval FALSE    TCC DSO was not found or not marked as a bad binary
++
++ */
++BOOLEAN
++EFIAPI
++IsMarkedBadDso (
++  VOID
++  )
++{
++  EFI_STATUS               Status;
++  UINT32                   Length;
++  LOADER_COMPRESSED_HEADER *Hdr;
++
++  Status = LocateComponent (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'), (VOID *)&Hdr, &Length);
++  if (EFI_ERROR (Status) || (Length < sizeof(LOADER_COMPRESSED_HEADER))) {
++    return FALSE;
++  }
++
++  if (Hdr->Signature == 0) {
++    DEBUG ((DEBUG_INFO, "BAD DSO(TCCT) detected!\n"));
++    return TRUE;
++  } else {
++    return FALSE;
++  }
++}
++
++/**
++  Mark TCC DSO as a bad binary by changing its signature to 0.
++
++  @retval EFI_SUCCESS
++  @retval EFI_NOT_FOUND          Unable to find IPFW/TCCT
++  @retval Others                 Errors during SPI operations
++
++ */
++EFI_STATUS
++EFIAPI
++InvalidateBadDso (
++  VOID
++  )
++{
++  EFI_STATUS       Status;
++  UINT32           Address;
++  UINT32           BaseAddress;
++  UINT32           RegionSize;
++  CONTAINER_ENTRY  *ContainerEntry;
++  COMPONENT_ENTRY  *CompEntry;
++  CONTAINER_HDR    *ContainerHdr;
++  UINT32           Signature;
++
++  Status = LocateComponentEntry (SIGNATURE_32 ('I', 'P', 'F', 'W'), SIGNATURE_32 ('T', 'C', 'C', 'T'), &ContainerEntry, &CompEntry);
++  if (EFI_ERROR (Status) || (ContainerEntry == NULL) || (CompEntry == NULL)) {
++    return EFI_NOT_FOUND;
++  }
++
++  Status = SpiGetRegionAddress (FlashRegionBios, NULL, &RegionSize);
++  if (EFI_ERROR (Status)) {
++    return Status;
++  }
++  BaseAddress = ((UINT32)(~RegionSize) + 1);
++
++  ContainerHdr = (CONTAINER_HDR *)(UINTN)ContainerEntry->HeaderCache;
++  Address = ContainerEntry->Base + ContainerHdr->DataOffset + CompEntry->Offset;
++  Address -= BaseAddress;
++
++  // Update 'Signature' field to 0 to mark bad DSO
++  Signature = 0;
++  Status = SpiFlashWrite (FlashRegionBios, Address, sizeof(Signature), (VOID *)&Signature);
++  if (!EFI_ERROR(Status)) {
++    DEBUG ((DEBUG_INFO, "Mark BAD DSO(TCCT) successfully\n"));
++  }
++  return Status;
++}
+diff --git a/Silicon/CommonSocPkg/Library/TccLib/TccLib.inf b/Silicon/CommonSocPkg/Library/TccLib/TccLib.inf
+index c2ce28df..937d6cbc 100644
+--- a/Silicon/CommonSocPkg/Library/TccLib/TccLib.inf
++++ b/Silicon/CommonSocPkg/Library/TccLib/TccLib.inf
+@@ -34,6 +34,8 @@
+   DebugLib
+   HobLib
+   BootloaderCoreLib
++  SpiFlashLib
++  ContainerLib
+ 
+ [Guids]
+   gTccRtctHobGuid
+diff --git a/Silicon/ElkhartlakePkg/FspBin/FspBin.inf b/Silicon/ElkhartlakePkg/FspBin/FspBin.inf
+index 5182a4a3..dbd093d7 100644
+--- a/Silicon/ElkhartlakePkg/FspBin/FspBin.inf
++++ b/Silicon/ElkhartlakePkg/FspBin/FspBin.inf
+@@ -11,7 +11,7 @@
+ 
+ [UserExtensions.SBL."CloneRepo"]
+   REPO    = https://github.com/intel/FSP.git
+-  COMMIT  = 86ba5c21544bba714586356c6d0caa6f46a4e8e4
++  COMMIT  = 72266f6523286fb3494f5b2553ace612d1dc95c4
+ 
+ [UserExtensions.SBL."CopyList"]
+   ElkhartLakeFspBinPkg/FspBin/FSPRel.bin               : Silicon/ElkhartlakePkg/FspBin/FspDbg.bin
+diff --git a/Silicon/ElkhartlakePkg/Include/Library/PchInfoLib.h b/Silicon/ElkhartlakePkg/Include/Library/PchInfoLib.h
+index 02aa04b8..9d710895 100644
+--- a/Silicon/ElkhartlakePkg/Include/Library/PchInfoLib.h
++++ b/Silicon/ElkhartlakePkg/Include/Library/PchInfoLib.h
+@@ -534,5 +534,13 @@ UINT8
+ GetPchMaxPseTimedGpioControllersNum (
+   VOID
+   );
++/**
++  Get Pch Maximum PSE PWM number
+ 
++  @retval Pch Maximum PSE PWM number
++**/
++UINT8
++GetPchMaxPsePWMNum (
++  VOID
++);
+ #endif // _PCH_INFO_LIB_H_
+diff --git a/Silicon/ElkhartlakePkg/Library/PchInfoLib/PchInfoLib.c b/Silicon/ElkhartlakePkg/Library/PchInfoLib/PchInfoLib.c
+index 9b7ebb7c..12cd7527 100644
+--- a/Silicon/ElkhartlakePkg/Library/PchInfoLib/PchInfoLib.c
++++ b/Silicon/ElkhartlakePkg/Library/PchInfoLib/PchInfoLib.c
+@@ -620,3 +620,10 @@ GetPchMaxPseTimedGpioControllersNum (
+ {
+   return 2;
+ }
++UINT8
++GetPchMaxPsePWMNum (
++  VOID
++)
++{
++  return 16;
++}
+diff --git a/Silicon/ElkhartlakePkg/Microcode/Microcode.inf b/Silicon/ElkhartlakePkg/Microcode/Microcode.inf
+index 72532e73..0b213bec 100644
+--- a/Silicon/ElkhartlakePkg/Microcode/Microcode.inf
++++ b/Silicon/ElkhartlakePkg/Microcode/Microcode.inf
+@@ -14,11 +14,11 @@
+   VERSION_STRING       = 1.0
+ 
+ [Sources]
+-  m0190661_00000014.mcb
++  m0190661_00000016.mcb
+ 
+ [UserExtensions.SBL."CloneRepo"]
+   REPO  = https://github.com/tianocore/edk2-non-osi.git
+-  COMMIT= e95198f65ad70cad812f7a118b7a65629c1bffd4
++  COMMIT= 6996a45d7f4014fd4aa0f1eb4cbe97d8a3c5957a
+ 
+ [UserExtensions.SBL."CopyList"]
+-  Silicon/Intel/ElkhartlakeSiliconBinPkg/Microcode/m0190661_00000014.mcb  : Silicon/ElkhartlakePkg/Microcode/m0190661_00000014.mcb
++  Silicon/Intel/ElkhartlakeSiliconBinPkg/Microcode/m0190661_00000016.mcb  : Silicon/ElkhartlakePkg/Microcode/m0190661_00000016.mcb
+-- 
+2.33.0.windows.2
+

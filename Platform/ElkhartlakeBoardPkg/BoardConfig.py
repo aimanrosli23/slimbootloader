@@ -26,7 +26,7 @@ class Board(BaseBoard):
         # VERINFO_PROJ_MAJOR_VER: 1 PV Quality release
         # VERINFO_PROJ_MINOR_VER: 0: PV  1: MR1  2: MR2 etc.
         self.VERINFO_PROJ_MAJOR_VER = 1
-        self.VERINFO_PROJ_MINOR_VER = 2
+        self.VERINFO_PROJ_MINOR_VER = 3
         self.VERINFO_SVN          = 1
         self.VERINFO_BUILD_DATE   = time.strftime("%m/%d/%Y")
         self.LOWEST_SUPPORTED_FW_VER = ((self.VERINFO_PROJ_MAJOR_VER << 8) + self.VERINFO_PROJ_MINOR_VER)
@@ -76,7 +76,7 @@ class Board(BaseBoard):
 
         self.ENABLE_PSEFW_LOADING = 1
         if self.ENABLE_PSEFW_LOADING:
-            self.PSEF_SIZE = 0x00020000
+            self.PSEF_SIZE = 0x00030000
             self.SIIPFW_SIZE += self.PSEF_SIZE
 
         if self.ENABLE_TSN:
@@ -134,19 +134,19 @@ class Board(BaseBoard):
         self.PAYLOAD_LOAD_HIGH    = 1
         self.PAYLOAD_EXE_BASE     = 0x00B00000
         self.PAYLOAD_SIZE         = 0x00020000
-        self.EPAYLOAD_SIZE        = 0x00160000
+        self.EPAYLOAD_SIZE        = 0x00162000
         self.UCODE_SIZE           = 0x00010000 if self.HAVE_FSP_BIN != 0 else 0
         self.MRCDATA_SIZE         = 0x00008000
         self.CFGDATA_SIZE         = 0x00004000
         self.KEYHASH_SIZE         = 0x00001000
-        self.CFG_DATABASE_SIZE    = self.CFGDATA_SIZE
+        self.CFG_DATABASE_SIZE    = self.CFGDATA_SIZE + 0x1000
         self.VARIABLE_SIZE        = 0x00002000
         if len(self._PAYLOAD_NAME.split(';')) > 1:
             self.UEFI_VARIABLE_SIZE = 0x00040000
         else:
             self.UEFI_VARIABLE_SIZE = 0x00001000
         self.SBLRSVD_SIZE         = 0x00001000
-        self.FWUPDATE_SIZE        = 0x0001A000 if self.ENABLE_FWU else 0
+        self.FWUPDATE_SIZE        = 0x0001B000 if self.ENABLE_FWU else 0
 
         self.TOP_SWAP_SIZE        = 0x080000
         self.REDUNDANT_SIZE       = 0x360000
@@ -229,7 +229,8 @@ class Board(BaseBoard):
             'SmbusLib|Silicon/CommonSocPkg/Library/SmbusLib/SmbusLib.inf',
             'PsdLib|Silicon/$(SILICON_PKG_NAME)/Library/PsdLib/PsdLib.inf',
             'HeciInitLib|Silicon/$(SILICON_PKG_NAME)/Library/HeciInitLib/HeciInitLib.inf',
-            'MeExtMeasurementLib|Silicon/$(SILICON_PKG_NAME)/Library/MeExtMeasurementLib/MeExtMeasurementLib.inf'
+            'MeExtMeasurementLib|Silicon/$(SILICON_PKG_NAME)/Library/MeExtMeasurementLib/MeExtMeasurementLib.inf',
+            'WatchDogTimerLib|Silicon/CommonSocPkg/Library/WatchDogTimerLib/WatchDogTimerLib.inf',
         ]
 
         if self.BUILD_CSME_UPDATE_DRIVER:

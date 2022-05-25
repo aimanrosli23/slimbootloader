@@ -21,6 +21,7 @@
 #include <IndustryStandard/Pci30.h>
 #include <Library/BootloaderCoreLib.h>
 #include <Library/BoardSupportLib.h>
+#include <Library/SocInitLib.h>
 #include <PchAccess.h>
 #include <RegAccess.h>
 #include <Library/CryptoLib.h>
@@ -40,6 +41,8 @@
 #include <Register/PmcRegs.h>
 #include <GpioConfig.h>
 #include <Library/GpioLib.h>
+#include <Library/WatchDogTimerLib.h>
+#include <Library/TccLib.h>
 
 CONST PLT_DEVICE  mPlatformDevices[]= {
   {{0x00001700}, OsBootDeviceSata  , 0 },
@@ -186,6 +189,15 @@ TccModePreMemConfig (
   FspmUpd->FspmConfig.DsoTuningEnPreMem      = TccCfgData->TccTuning;
   FspmUpd->FspmConfig.TccErrorLogEnPreMem    = TccCfgData->TccErrorLog;
 
+  if (IsMarkedBadDso ()) {
+    DEBUG ((DEBUG_INFO, "Incorrect TCC tuning parameters. Platform rebooted with default values.\n"));
+    FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
+  } else if (IsWdtFlagsSet(WDT_FLAG_TCC_DSO_IN_PROGRESS) && IsWdtTimeout()) {
+    WdtClearScratchpad (WDT_FLAG_TCC_DSO_IN_PROGRESS);
+    FspmUpd->FspmConfig.TccStreamCfgStatusPreMem = 1;
+    InvalidateBadDso ();
+  } else if (TccCfgData->TccTuning != 0) {
+    WdtReloadAndStart (WDT_TIMEOUT_TCC_DSO, WDT_FLAG_TCC_DSO_IN_PROGRESS);
   // Load TCC stream config from container
   TccStreamBase = NULL;
   TccStreamSize = 0;
@@ -198,7 +210,6 @@ TccModePreMemConfig (
     FspmUpd->FspmConfig.TccStreamCfgSizePreMem = TccStreamSize;
     DEBUG ((DEBUG_INFO, "Load TCC stream @0x%p, size = 0x%x\n", TccStreamBase, TccStreamSize));
 
-    if (TccCfgData->TccTuning != 0) {
       StreamConfig = (TCC_STREAM_CONFIGURATION *) TccStreamBase;
       PolicyConfig = (BIOS_SETTINGS *) &StreamConfig->BiosSettings;
 
@@ -867,6 +878,7 @@ RtcInit (
 
   Bar     = MmioRead32 (MM_PCI_ADDRESS (0, PCI_DEVICE_NUMBER_PCH_PMC, PCI_FUNCTION_NUMBER_PCH_PMC, R_PMC_CFG_BASE)) & ~0x0F;
   PmConf1 = MmioRead8 (Bar + R_PMC_PWRM_GEN_PMCON_B);
+  RtcRead (R_RTC_IO_REGA);
 
   if ((PmConf1 & B_PMC_PWRM_GEN_PMCON_B_RTC_PWR_STS) != 0) {
     DEBUG ((DEBUG_INFO, "Initialize RTC with default values\n"));

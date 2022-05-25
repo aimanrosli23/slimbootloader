@@ -620,3 +620,10 @@ GetPchMaxPseTimedGpioControllersNum (
 {
   return 2;
 }
+UINT8
+GetPchMaxPsePWMNum (
+  VOID
+)
+{
+  return 16;
+}
