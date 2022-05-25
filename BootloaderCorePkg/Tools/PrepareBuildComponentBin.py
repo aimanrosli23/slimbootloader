@@ -10,7 +10,7 @@ import sys
 import re
 import shutil
 import subprocess
-from   datetime import date
+import glob
 
 def Fatal (msg):
     sys.stdout.flush()
@@ -222,15 +222,13 @@ def BuildFspBins (fsp_dir, sbl_dir, fsp_inf, silicon_pkg_name, flag):
 
 def Main():
 
-    if len(sys.argv) < 3:
-        print ('Silicon directory and silicon package name are required!')
+    if len(sys.argv) < 4:
+        print ('Silicon directory, silicon package name, and target are required!')
         return -1
-    target = ''
-    if len(sys.argv) > 3:
-        target = sys.argv[3]
 
     sbl_dir          = sys.argv[1]
     silicon_pkg_name = sys.argv[2]
+    target           = sys.argv[3]
 
     workspace_dir  = os.path.join(sbl_dir, '../Download', silicon_pkg_name)
     fsp_repo_dir   = os.path.abspath (os.path.join(workspace_dir, 'IntelFsp'))
@@ -247,6 +245,7 @@ def Main():
 
     microcode_inf = os.path.join(sbl_dir, 'Silicon', silicon_pkg_name, 'Microcode', 'Microcode.inf')
     CopyBins (ucode_repo_dir, sbl_dir, microcode_inf)
+
     return 0
 
 if __name__ == '__main__':

@@ -10,6 +10,7 @@
 #
 import os
 import sys
+import re
 
 tool_dir = os.path.join(os.path.dirname (os.path.realpath(__file__)), 'BootloaderCorePkg', 'Tools')
 sys.dont_write_bytecode = True
@@ -72,7 +73,6 @@ def prep_env ():
     os.environ['EDK_TOOLS_PATH'] = os.path.join(sblsource, 'BaseTools')
     os.environ['BASE_TOOLS_PATH'] = os.path.join(sblsource, 'BaseTools')
     os.environ['CONF_PATH'] = os.path.join(os.environ['WORKSPACE'], 'Conf')
-
     if 'SBL_KEY_DIR' not in os.environ:
         os.environ['SBL_KEY_DIR'] = os.path.join(sblsource, '..', 'SblKeys')
 
@@ -348,22 +348,26 @@ class Build(object):
         num_fit_entries = 0
         if self._board.UCODE_SIZE > 0:
             ucode_base = self._board.UCODE_BASE
-            ucode_offset = ucode_base - base;
-            if (ucode_offset < 0):
-                raise Exception ('  UCODE %x\n  UCODE address (0x%08X) out of range' % (base, ucode_base))
+            ucode_offset = ucode_base - base
+            if ucode_offset < 0:
+                raise Exception ('UCODE %x\n  UCODE address (0x%08X) out of range' % (base, ucode_base))
 
             # Collect all CPU uCode images
             u_code_images = []
             while ucode_offset < len(rom):
+                # Extract info from CPU uCode images
                 ucode_hdr = UCODE_HEADER.from_buffer(rom, ucode_offset)
                 if ucode_hdr.header_version == 1:
-                    if ucode_hdr.total_size:
-                        ucode_size = ucode_hdr.total_size
-                    else:
-                        ucode_size = 0x0800
-                    u_code_images.append((ucode_offset, ucode_size))
-                    ucode_offset += ucode_size
+                    u_code_images.append(ucode_offset)
                     num_fit_entries += 1
+                    if (hasattr (self._board, "UCODE_SLOT_SIZE")):
+                        if ucode_hdr.total_size > self._board.UCODE_SLOT_SIZE:
+                            raise Exception ('UCODE total size (0x%08X) greater than UCODE slot size' % (ucode_hdr.total_size, self._board.UCODE_SLOT_SIZE))
+                        ucode_offset += self._board.UCODE_SLOT_SIZE
+                    elif ucode_hdr.total_size:
+                        ucode_offset += ucode_hdr.total_size
+                    else:
+                        ucode_offset += 0x0800
                 else:
                     break
 
@@ -372,7 +376,7 @@ class Build(object):
                 fit_entry = FIT_ENTRY.from_buffer(rom, fit_offset + (i+1)*16)
                 # uCode Update
                 if len(u_code_images) > 0:
-                    offset, size = u_code_images.pop(0)
+                    offset = u_code_images.pop(0)
                     fit_entry.set_values(base + offset, 0, 0x100, 0x1, 0)
                     print ('  Patching entry %d with 0x%08X - uCode' % (i, fit_entry.address))
                 else:
@@ -1070,7 +1074,6 @@ class Build(object):
         out_file = os.path.join("Outputs", self._board.BOARD_NAME, 'Stitch_Components.zip')
         copy_images_to_output (self._fv_dir, out_file, self._img_list, rgn_name_list, extra_list)
 
-
     def pre_build(self):
         # Update search path
         sbl_dir = os.environ['SBL_SOURCE']
@@ -1123,7 +1126,19 @@ class Build(object):
         if self._board.HAVE_FSP_BIN:
             check_build_component_bin = os.path.join(tool_dir, 'PrepareBuildComponentBin.py')
             if os.path.exists(check_build_component_bin):
-                ret = subprocess.call([sys.executable, check_build_component_bin, work_dir, self._board.SILICON_PKG_NAME, '/d' if self._board.FSPDEBUG_MODE else '/r'])
+                # Create basic command
+                cmd = [ sys.executable,
+                        check_build_component_bin,
+                        work_dir,
+                        self._board.SILICON_PKG_NAME ]
+
+                # Add target
+                if (self._board.FSPDEBUG_MODE):
+                    cmd.append('/d')
+                else:
+                    cmd.append('/r')
+
+                ret = subprocess.call(cmd)
                 if ret:
                     raise Exception  ('Failed to prepare build component binaries !')
 
