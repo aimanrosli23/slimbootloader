@@ -167,6 +167,7 @@ typedef EFI_EXP_BASE10_DATA         EFI_PROCESSOR_VOLTAGE_DATA;
 extern  SMBIOS_TABLE_TYPE0    mBiosInfo;
 extern  SMBIOS_TABLE_TYPE1    mSystemInfo;
 extern  SMBIOS_TABLE_TYPE2    mBaseBoardInfo;
+extern  SMBIOS_TABLE_TYPE3    mDefaultChssisInfoInfo;
 extern  SMBIOS_TABLE_TYPE4    mProcessorInfo;
 extern  SMBIOS_TABLE_TYPE19   mMemArrayMappedAddr;
 
