@@ -524,6 +524,7 @@ UpdateFspConfig (
     break;
   case PLATFORM_ID_ADL_N_DDR5_CRB:
     // DP + DP
+    DEBUG((DEBUG_INFO, "PLATFORM_ID_ADL_N_DDR5_CRB board Id %x .....\n", PlatformId));
     CopyMem(SaDisplayConfigTable, (VOID *)(UINTN)mAdlNddr5CrbRowDisplayDdiConfig, sizeof(mAdlNddr5CrbRowDisplayDdiConfig));
     break;
   case PLATFORM_ID_ADL_N_LPDDR5_RVP:
@@ -561,9 +562,7 @@ UpdateFspConfig (
     Fspmcfg->SiSkipOverrideBootModeWhenFwUpdate = TRUE;
 #endif
   }
-#ifndef PLATFORM_ADLN
     Fspmcfg->WRDS = 0x1;
-#endif
   if (IsPchLp ()) {
     Fspmcfg->DdiPortAConfig = 0x1;
     Fspmcfg->WdtDisableAndLock = 0x1;
@@ -594,6 +593,9 @@ UpdateFspConfig (
         Fspmcfg->DdiPortBHpd = 0x1;
         Fspmcfg->DmiHweq = 0x2;
         Fspmcfg->PcieClkReqGpioMux[9] = 0x796e9000;
+        Fspmcfg->PrmrrSize = 0x200000;
+        Fspmcfg->SkipCpuReplacementCheck = 0x0;
+        Fspmcfg->FirstDimmBitMaskEcc = 0x0;
         break;
       case PLATFORM_ID_ADL_N_DDR5_CRB:
         Fspmcfg->CpuPcieRpEnableMask = 0x0;
